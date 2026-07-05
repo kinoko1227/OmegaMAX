@@ -1,86 +1,87 @@
 /**
  * ==========================================================
- * ΩMAX Ultimate v9
- * Logger.gs（完全安定・互換対応版）
+ * ΩMAX Ultimate v10
+ * Logger.js
+ * ----------------------------------------------------------
+ * 共通ログ管理
  * ==========================================================
  */
 
 const Logger = (() => {
 
-  /**
-   * INFOログ
-   */
+  const log = (message, data = null) => {
+    write(LOG_LEVEL.INFO, message, data);
+  };
+
   const info = (message, data = null) => {
-    write("INFO", message, data);
+    write(LOG_LEVEL.INFO, message, data);
   };
 
-  /**
-   * WARNログ
-   */
   const warn = (message, data = null) => {
-    write("WARN", message, data);
+    write(LOG_LEVEL.WARN, message, data);
   };
 
-  /**
-   * ERRORログ
-   */
   const error = (message, errorObj = null) => {
-
-    let text = message;
+    let body = message;
 
     if (errorObj) {
       if (errorObj.stack) {
-        text += "\n" + errorObj.stack;
+        body += "\n" + errorObj.stack;
       } else {
-        text += "\n" + errorObj.toString();
+        body += "\n" + String(errorObj);
       }
     }
 
-    write("ERROR", text);
+    write(LOG_LEVEL.ERROR, body);
   };
 
-  /**
-   * DEBUGログ
-   */
   const debug = (message, data = null) => {
+    if (!CONFIG.DEBUG.ENABLE) return;
+    write(LOG_LEVEL.DEBUG, message, data);
+  };
 
-    if (typeof CONFIG !== "undefined" &&
-        CONFIG.DEBUG &&
-        CONFIG.DEBUG.ENABLE_LOG === false) {
-      return;
+  const time = (label, fn) => {
+    const start = new Date().getTime();
+
+    try {
+      const result = fn();
+      const end = new Date().getTime();
+
+      info(label + " completed", {
+        elapsedMs: end - start
+      });
+
+      return result;
+
+    } catch (e) {
+      const end = new Date().getTime();
+
+      error(label + " failed", {
+        elapsedMs: end - start,
+        error: e.toString(),
+        stack: e.stack || ""
+      });
+
+      throw e;
     }
-
-    write("DEBUG", message, data);
   };
 
-  /**
-   * ★互換用 log（これが重要）
-   * 旧コード対応
-   */
-  const log = (message, data = null) => {
-    write("INFO", message, data);
-  };
-
-  /**
-   * 共通書き込み処理
-   */
   const write = (level, message, data = null) => {
+    if (!CONFIG.LOG.ENABLE) return;
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetName = (typeof CONFIG !== "undefined" && CONFIG.SHEETS)
-      ? CONFIG.SHEETS.LOG
-      : "LOG";
+    const sheetName = CONFIG.SHEETS.LOG;
+    const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
 
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) return;
+    ensureHeader(sheet);
 
-    let body = message;
+    let body = String(message);
 
     if (data !== null && data !== undefined) {
       try {
         body += "\n" + JSON.stringify(data);
       } catch (e) {
-        body += "\n[Unserializable Data]";
+        body += "\n[Unserializable data]";
       }
     }
 
@@ -88,7 +89,7 @@ const Logger = (() => {
       Utilities.formatDate(
         new Date(),
         Session.getScriptTimeZone(),
-        "yyyy-MM-dd HH:mm:ss"
+        DATE_FORMAT.DATETIME
       ),
       level,
       body
@@ -97,31 +98,29 @@ const Logger = (() => {
     trim(sheet);
   };
 
-  /**
-   * ログ肥大化防止
-   */
-  const trim = (sheet) => {
+  const ensureHeader = (sheet) => {
+    if (sheet.getLastRow() > 0) return;
 
-    const maxRows = (typeof CONFIG !== "undefined" && CONFIG.LOG)
-      ? CONFIG.LOG.MAX_ROWS
-      : 500;
-
-    const lastRow = sheet.getLastRow();
-
-    if (lastRow <= maxRows + 1) return;
-
-    sheet.deleteRows(2, lastRow - maxRows - 1);
+    sheet.getRange(1, 1, 1, SHEET_HEADERS.LOG.length)
+      .setValues([SHEET_HEADERS.LOG]);
   };
 
-  /**
-   * 公開API
-   */
+  const trim = (sheet) => {
+    const max = CONFIG.LOG.MAX_ROWS || 1000;
+    const lastRow = sheet.getLastRow();
+
+    if (lastRow <= max + 1) return;
+
+    sheet.deleteRows(2, lastRow - max - 1);
+  };
+
   return {
-    log,   // ←これ重要（旧互換）
+    log,
     info,
     warn,
     error,
-    debug
+    debug,
+    time
   };
 
 })();

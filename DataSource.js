@@ -8,80 +8,99 @@ class DataSource {
     return this.ss().getSheetByName(name);
   }
 
-
-  //////////////////////////////
-  // ① レース取得
-  //////////////////////////////
-  static getTodayRaces() {
-
-    const v = this.sheet("RACES").getDataRange().getValues();
-
-    return v.slice(1).map(r => ({
-      id: r[0],
-      name: r[1],
-      course: r[2],
-      distance: r[3],
-      date: r[4]
-    }));
+  static values(sheetName) {
+    const sheet = this.sheet(sheetName);
+    if (!sheet) return [];
+    const values = sheet.getDataRange().getValues();
+    return values || [];
   }
 
+  static getTodayRaces() {
+    const rows = this.values(CONFIG.SHEETS.RACES);
+    if (rows.length <= 1) return [];
 
-  //////////////////////////////
-  // ② 馬データ
-  //////////////////////////////
+    return rows.slice(1)
+      .filter(r => r[0])
+      .map(r => {
+        const race = {
+          id: String(r[0]),
+          name: r[1] || "",
+          course: r[2] || "",
+          distance: Number(r[3]) || 0,
+          date: r[4] || "",
+          type: r[5] || this.detectRaceType()
+        };
+
+        const horses = this.getHorses(race.id);
+        const odds = this.getOdds(race.id);
+
+        race.horses = horses.map(h => ({
+          ...h,
+          odds: odds[h.id] || h.odds || 0
+        }));
+
+        return race;
+      });
+  }
+
   static getHorses(raceId) {
+    const rows = this.values(CONFIG.SHEETS.HORSES);
+    if (rows.length <= 1) return [];
 
-    const v = this.sheet("HORSES").getDataRange().getValues();
-
-    return v
-      .filter(r => r[0] === raceId)
+    return rows.slice(1)
+      .filter(r => String(r[0]) === String(raceId))
       .map(r => ({
-        id: r[1],
-        name: r[2],
-        jockey: r[3],
-        trainer: r[4],
-        weight: r[5],
-        odds: r[6] || null,
-        form: r[7] || 0
+        raceId: String(r[0]),
+        id: String(r[1]),
+        name: r[2] || "",
+        jockey: r[3] || "",
+        trainer: r[4] || "",
+        weight: Number(r[5]) || 0,
+        odds: Number(r[6]) || 0,
+        form: Number(r[7]) || 0,
+        gate: Number(r[8]) || 0,
+        popularity: Number(r[9]) || 0
       }));
   }
 
-
-  //////////////////////////////
-  // ③ オッズ
-  //////////////////////////////
   static getOdds(raceId) {
-
-    const v = this.sheet("ODDS").getDataRange().getValues();
-
+    const rows = this.values(CONFIG.SHEETS.ODDS);
     const map = {};
 
-    v.forEach(r => {
-      if (r[0] === raceId) {
-        map[r[1]] = Number(r[2]);
+    rows.slice(1).forEach(r => {
+      if (String(r[0]) === String(raceId)) {
+        map[String(r[1])] = Number(r[2]) || 0;
       }
     });
 
     return map;
   }
 
-
-  //////////////////////////////
-  // ④ レース結果
-  //////////////////////////////
   static getResults() {
-
-    const v = this.sheet("RESULTS").getDataRange().getValues();
-
+    const rows = this.values(CONFIG.SHEETS.RESULTS);
     const map = {};
 
-    v.slice(1).forEach(r => {
-      map[r[0]] = {
-        winner: r[1],
-        place: r[2] ? String(r[2]).split(",") : []
+    rows.slice(1).forEach(r => {
+      if (!r[0]) return;
+
+      map[String(r[0])] = {
+        raceId: String(r[0]),
+        winner: r[1] ? String(r[1]) : "",
+        place: r[2] ? String(r[2]).split(",").map(x => x.trim()) : [],
+        payout: Number(r[3]) || 0
       };
     });
 
     return map;
+  }
+
+  static detectRaceType(date = new Date()) {
+    const day = date.getDay();
+
+    if (CONFIG.RACING.CENTRAL_DAYS.indexOf(day) >= 0) {
+      return "CENTRAL";
+    }
+
+    return "LOCAL";
   }
 }

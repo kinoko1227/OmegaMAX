@@ -1,115 +1,18 @@
 /**
  * ==========================================================
- * ΩMAX Ultimate v9
- * 01_Constants.gs
+ * ΩMAX Ultimate v10
+ * Constants.js
  * ----------------------------------------------------------
- * システム共通定数
+ * 共通定数・辞書
  * ==========================================================
  */
 
-const APP = Object.freeze({
-  NAME: CONFIG.APP.NAME,
-  VERSION: CONFIG.APP.VERSION,
-  AUTHOR: CONFIG.APP.AUTHOR
-});
-
-/**
- * 日付フォーマット
- */
 const DATE_FORMAT = Object.freeze({
   DATE: "yyyy/MM/dd",
-  TIME: "HH:mm",
-  DATETIME: "yyyy/MM/dd HH:mm:ss",
-  MONTH: "yyyy/MM",
-  ID: "yyyyMMdd"
+  DATE_ID: "yyyyMMdd",
+  DATETIME: "yyyy/MM/dd HH:mm:ss"
 });
 
-/**
- * 競馬場コード
- */
-const TRACK_CODES = Object.freeze({
-
-  Hakodate: "HK",
-  Sapporo: "SP",
-  Fukushima: "FK",
-
-  Tokyo: "TK",
-  Nakayama: "NK",
-  Niigata: "NG",
-
-  Chukyo: "CK",
-
-  Kyoto: "KY",
-
-  Hanshin: "HS",
-
-  Kokura: "KR"
-
-});
-
-/**
- * レースグレード
- */
-const RACE_GRADE = Object.freeze({
-  G1: "G1",
-  G2: "G2",
-  G3: "G3",
-  LISTED: "L",
-  OPEN: "OP",
-  CLASS3: "3勝",
-  CLASS2: "2勝",
-  CLASS1: "1勝",
-  MAIDEN: "未勝利",
-  NEWCOMER: "新馬"
-});
-
-/**
- * 馬場
- */
-const SURFACE = Object.freeze({
-  TURF: "芝",
-  DIRT: "ダート",
-  JUMP: "障害"
-});
-
-/**
- * 馬場状態
- */
-const TRACK_CONDITION = Object.freeze({
-  FIRM: "良",
-  GOOD: "稍重",
-  YIELDING: "重",
-  SOFT: "不良"
-});
-
-/**
- * 券種
- */
-const BET_TYPE = Object.freeze({
-  WIN: "単勝",
-  PLACE: "複勝",
-  QUINELLA: "馬連",
-  EXACTA: "馬単",
-  WIDE: "ワイド",
-  TRIO: "3連複",
-  TRIFECTA: "3連単"
-});
-
-/**
- * 勝負度
- */
-const CONFIDENCE_GRADE = Object.freeze({
-  S: "S",
-  A: "A",
-  B: "B",
-  C: "C",
-  D: "D",
-  SKIP: "見送り"
-});
-
-/**
- * ログレベル
- */
 const LOG_LEVEL = Object.freeze({
   INFO: "INFO",
   WARN: "WARN",
@@ -117,94 +20,151 @@ const LOG_LEVEL = Object.freeze({
   DEBUG: "DEBUG"
 });
 
-/**
- * 処理結果
- */
-const STATUS = Object.freeze({
-  SUCCESS: "SUCCESS",
-  ERROR: "ERROR",
-  SKIP: "SKIP"
+const RACE_TYPE = Object.freeze({
+  CENTRAL: "CENTRAL",
+  LOCAL: "LOCAL"
 });
 
-/**
- * シートカラー
- */
-const COLORS = Object.freeze({
-  HEADER_BG: "#222222",
-  HEADER_FONT: "#FFFFFF",
-
-  BUY: "#D9EAD3",
-  WATCH: "#FFF2CC",
-
-  ERROR: "#F4CCCC",
-  SUCCESS: "#D9EAD3",
-
-  INFO: "#D0E0E3"
+const SURFACE = Object.freeze({
+  TURF: "TURF",
+  DIRT: "DIRT",
+  OBSTACLE: "OBSTACLE",
+  UNKNOWN: "UNKNOWN"
 });
 
-/**
- * EventId説明キー
- */
-const DESCRIPTION_KEYS = Object.freeze({
-  EVENT_ID: "EventID",
-  PLACE: "競馬場",
-  RACE: "レース",
-  RANK: "勝負度",
-  EXPECT: "期待値",
-  MEMO: "メモ"
+const GOING = Object.freeze({
+  FIRM: "FIRM",
+  GOOD: "GOOD",
+  YIELDING: "YIELDING",
+  SOFT: "SOFT",
+  HEAVY: "HEAVY",
+  UNKNOWN: "UNKNOWN"
 });
 
-/**
- * FeatureEngineで使用する特徴量キー
- */
-const FEATURE_KEYS = Object.freeze({
+const DISTANCE_TYPE = Object.freeze({
+  SPRINT: "SPRINT",
+  MILE: "MILE",
+  MIDDLE: "MIDDLE",
+  LONG: "LONG",
+  UNKNOWN: "UNKNOWN"
+});
 
+const PACE = Object.freeze({
+  SLOW: "SLOW",
+  AVERAGE: "AVERAGE",
+  FAST: "FAST",
+  UNKNOWN: "UNKNOWN"
+});
+
+const DECISION = Object.freeze({
+  BUY: "BUY",
+  WATCH: "WATCH",
+  PASS: "PASS"
+});
+
+const CONFIDENCE_RANK = Object.freeze({
+  S: "S",
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  PASS: "見送り"
+});
+
+const TICKET_TYPE = Object.freeze({
+  WIN: "単勝",
+  QUINELLA: "馬連",
+  EXACTA: "馬単",
+  WIDE: "ワイド",
+  TRIO: "3連複",
+  TRIFECTA: "3連単"
+});
+
+const FEATURE_KEY = Object.freeze({
+  SPEED: "speed",
+  STAMINA: "stamina",
+  FINISH: "finish",
+  FORM: "form",
+  LAST3: "last3",
+  LAST5: "last5",
+  TREND: "trend",
+  DISTANCE: "distance",
+  SURFACE: "surface",
+  GOING: "going",
+  COURSE: "course",
+  PACE: "pace",
+  JOCKEY: "jockey",
+  TRAINER: "trainer",
+  GATE: "gate",
+  WEIGHT: "weight",
   ODDS: "odds",
   POPULARITY: "popularity",
+  MARKET: "market"
+});
 
-  DRAW: "draw",
-  HORSE_NUMBER: "horseNumber",
+const DEFAULT_WEIGHT = Object.freeze({
+  speed: 1.15,
+  stamina: 1.05,
+  finish: 1.10,
+  form: 1.10,
+  last3: 1.12,
+  last5: 1.08,
+  trend: 1.05,
+  distance: 1.10,
+  surface: 1.08,
+  going: 1.05,
+  course: 1.05,
+  pace: 1.08,
+  jockey: 1.05,
+  trainer: 1.03,
+  gate: 1.00,
+  weight: 1.00,
+  odds: 1.00,
+  popularity: 0.98,
+  market: 1.00
+});
 
-  DISTANCE: "distance",
+const SHEET_HEADERS = Object.freeze({
+  RACES: [
+    "id",
+    "name",
+    "course",
+    "distance",
+    "date",
+    "type",
+    "surface",
+    "going"
+  ],
 
-  COURSE: "course",
+  HORSES: [
+    "raceId",
+    "horseId",
+    "name",
+    "jockey",
+    "trainer",
+    "weight",
+    "odds",
+    "form",
+    "gate",
+    "popularity"
+  ],
 
-  SURFACE: "surface",
+  ODDS: [
+    "raceId",
+    "horseId",
+    "odds"
+  ],
 
-  TRACK: "trackCondition",
+  RESULTS: [
+    "raceId",
+    "winner",
+    "place",
+    "payout"
+  ],
 
-  WEATHER: "weather",
-
-  PACE: "pace",
-
-  LAST3F: "last3f",
-
-  WEIGHT: "weight",
-
-  AGE: "age",
-
-  SEX: "sex",
-
-  JOCKEY: "jockey",
-
-  TRAINER: "trainer",
-
-  BLOODLINE: "bloodline",
-
-  CLASS: "class",
-
-  FORM: "form",
-
-  FATIGUE: "fatigue",
-
-  GROWTH: "growth",
-
-  TRANSPORT: "transport",
-
-  BIAS: "bias",
-
-  MARKET: "market",
-
-  LEARNING: "learning"
-
+  LOG: [
+    "datetime",
+    "level",
+    "message"
+  ]
 });

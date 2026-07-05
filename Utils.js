@@ -1,159 +1,144 @@
 /**
  * ==========================================================
- * ΩMAX Ultimate v9
- * 03_Utils.gs
+ * ΩMAX Ultimate v10
+ * Utils.js
  * ----------------------------------------------------------
  * 共通ユーティリティ
  * ==========================================================
  */
 
-/**
- * シート取得
- */
-function getSheet(name) {
+class Utils {
 
-  const sheet = SpreadsheetApp
-    .getActiveSpreadsheet()
-    .getSheetByName(name);
+  /**
+   * null・undefinedチェック
+   */
+  static isEmpty(value) {
 
-  if (!sheet) {
-    throw new Error(`Sheet not found : ${name}`);
+    return (
+      value === null ||
+      value === undefined ||
+      value === ""
+    );
+
   }
 
-  return sheet;
+  /**
+   * 数値変換
+   */
+  static toNumber(value, defaultValue = 0) {
 
-}
+    const n = Number(value);
 
-/**
- * レース名
- */
-function formatRace(place, race) {
+    return isNaN(n)
+      ? defaultValue
+      : n;
 
-  return `${place} ${race}`;
+  }
 
-}
+  /**
+   * 小数丸め
+   */
+  static round(value, digit = 2) {
 
-/**
- * 数値判定
- */
-function isNumber(value) {
+    const p = Math.pow(10, digit);
 
-  return typeof value === "number" &&
-         !isNaN(value) &&
-         isFinite(value);
+    return Math.round(value * p) / p;
 
-}
+  }
 
-/**
- * 数値変換
- */
-function toNumber(value, defaultValue = 0) {
+  /**
+   * 0～1へ制限
+   */
+  static clamp01(value) {
 
-  const n = Number(value);
+    return Math.max(
+      0,
+      Math.min(1, value)
+    );
 
-  return isNaN(n)
-    ? defaultValue
-    : n;
+  }
 
-}
+  /**
+   * 配列平均
+   */
+  static average(list) {
 
-/**
- * 小数丸め
- */
-function round(value, digit = 2) {
+    if (!list || list.length === 0) {
+      return 0;
+    }
 
-  const p = Math.pow(10, digit);
+    const sum = list.reduce(
+      (a, b) => a + Number(b || 0),
+      0
+    );
 
-  return Math.round(value * p) / p;
+    return sum / list.length;
 
-}
+  }
 
-/**
- * 範囲制限
- */
-function clamp(value, min, max) {
+  /**
+   * 合計
+   */
+  static sum(list) {
 
-  return Math.min(
-    Math.max(value, min),
-    max
-  );
+    if (!list) return 0;
 
-}
+    return list.reduce(
+      (a, b) => a + Number(b || 0),
+      0
+    );
 
-/**
- * 割合
- */
-function percent(value, digit = 1) {
+  }
 
-  return round(value * 100, digit);
+  /**
+   * 最大
+   */
+  static max(list) {
 
-}
+    return Math.max(...list);
 
-/**
- * 平均
- */
-function average(array) {
+  }
 
-  if (!array.length) return 0;
+  /**
+   * 最小
+   */
+  static min(list) {
 
-  return array.reduce((a, b) => a + b, 0)
-    / array.length;
+    return Math.min(...list);
 
-}
+  }
 
-/**
- * 分散
- */
-function variance(array) {
+  /**
+   * ディープコピー
+   */
+  static clone(obj) {
 
-  if (!array.length) return 0;
+    return JSON.parse(
+      JSON.stringify(obj)
+    );
 
-  const avg = average(array);
+  }
 
-  return array.reduce((sum, x) => {
+  /**
+   * 今日文字列
+   */
+  static today() {
 
-    return sum + Math.pow(x - avg, 2);
+    return Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone(),
+      DATE_FORMAT.DATE
+    );
 
-  }, 0) / array.length;
+  }
 
-}
+  /**
+   * UUID生成
+   */
+  static uuid() {
 
-/**
- * 標準偏差
- */
-function standardDeviation(array) {
+    return Utilities.getUuid();
 
-  return Math.sqrt(
-    variance(array)
-  );
-
-}
-
-/**
- * 配列合計
- */
-function sum(array) {
-
-  return array.reduce((a, b) => a + b, 0);
-
-}
-
-/**
- * 重複除去
- */
-function unique(array) {
-
-  return [...new Set(array)];
-
-}
-
-/**
- * 深いコピー
- */
-function deepCopy(obj) {
-
-  return JSON.parse(
-    JSON.stringify(obj)
-  );
+  }
 
 }
