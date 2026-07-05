@@ -1,217 +1,132 @@
- /**
-  * =========================================
-  * ΩMAX v9 - Race Layer
-  * =========================================
-  * 役割：
-  * - レースデータの正規化
-  * - 出走馬データの統一フォーマット化
-  * - FeatureEngineへの安定供給
-  * - 下流エンジンの入力保証
-  * =========================================
-  */
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * Race.js
+ * ----------------------------------------------------------
+ * レースドメインモデル
+ * DataSource → Race → FeatureEngine の橋渡し
+ * ==========================================================
+ */
 
 class Race {
 
   /**
-   * レースオブジェクト生成（標準化）
+   * レース正規化
    */
   static build(raw) {
-    if (!raw) {
-      throw new Error("[Race.build] raw data is null");
-    }
+    const race = raw || {};
 
-    const race = {
-      id: this._safe(raw.id),
-      name: this._safe(raw.name),
-      date: this._safe(raw.date),
+    const horses = Array.isArray(race.horses)
+      ? race.horses
+          .map(h => this.normalizeHorse(h))
+          .filter(h => h.id)
+      : [];
 
-      course: this._normalizeCourse(raw.course),
-      distance: Number(raw.distance || 0),
-      ground: this._normalizeGround(raw.ground),
-
-      grade: this._normalizeGrade(raw.grade),
-
-      horses: this._buildHorses(raw.horses || []),
-
-      meta: {
-        source: raw.source || "unknown",
-        createdAt: new Date().toISOString()
-      }
-    };
-
-    return Validator.validateRace(race);
-  }
-
-
-  /**
-   * 出走馬配列の統一化
-   */
-  static _buildHorses(horses) {
-    return horses.map(h => ({
-      id: this._safe(h.id),
-      name: this._safe(h.name),
-
-      odds: Number(h.odds || 0),
-      popularity: Number(h.popularity || 0),
-      bracket: Number(h.bracket || 0),
-      horseNumber: Number(h.horseNumber || 0),
-
-      jockey: this._safe(h.jockey),
-      trainer: this._safe(h.trainer),
-
-      weight: Number(h.weight || 0),
-      weightDiff: Number(h.weightDiff || 0),
-
-      age: Number(h.age || 0),
-      sex: this._safe(h.sex),
-
-      bloodline: this._safe(h.bloodline),
-
-      pastRuns: this._normalizePastRuns(h.pastRuns || []),
-
-      // FeatureEngine用プレースホルダ
-      features: {}
-    }));
-  }
-
-
-  /**
-   * 過去走の正規化
-   */
-  static _normalizePastRuns(runs) {
-    return runs.map(r => ({
-      date: this._safe(r.date),
-      course: this._normalizeCourse(r.course),
-      distance: Number(r.distance || 0),
-
-      finishPosition: Number(r.finishPosition || 0),
-      time: Number(r.time || 0),
-
-      last3f: Number(r.last3f || 0),
-
-      pace: this._safe(r.pace),
-      condition: this._safe(r.condition)
-    }));
-  }
-
-
-  /**
-   * コース正規化
-   */
-  static _normalizeCourse(course) {
-    if (!course) return "unknown";
-
-    return String(course)
-      .replace(/\s+/g, "")
-      .toUpperCase();
-  }
-
-
-  /**
-   * 馬場状態正規化
-   */
-  static _normalizeGround(ground) {
-    if (!ground) return "UNKNOWN";
-
-    const g = String(ground).toLowerCase();
-
-    if (g.includes("良")) return "GOOD";
-    if (g.includes("稍")) return "GOOD_TO_YIELDING";
-    if (g.includes("重")) return "HEAVY";
-    if (g.includes("不")) return "VERY_HEAVY";
-
-    return "UNKNOWN";
-  }
-
-
-  /**
-   * レース格付け正規化
-   */
-  static _normalizeGrade(grade) {
-    if (!grade) return "UNKNOWN";
-
-    const g = String(grade).toUpperCase();
-
-    if (g.includes("G1")) return "G1";
-    if (g.includes("G2")) return "G2";
-    if (g.includes("G3")) return "G3";
-    if (g.includes("OP")) return "OPEN";
-
-    return "UNKNOWN";
-  }
-
-
-  /**
-   * 安全文字列化
-   */
-  static _safe(v) {
-    if (v == null) return "";
-    return String(v);
-  }
-
-
-  static extractContext(race) {
-
-  const horses = race.horses || [];
-
-  if (horses.length === 0) {
     return {
-      horses: [],
-      distance: race.distance,
-      grade: race.grade,
-      ground: race.ground,
-      course: race.course,
-      isShort: race.distance <= 1400,
-      isMiddle: race.distance > 1400 && race.distance < 2200,
-      isLong: race.distance >= 2200,
-      isHeavyGround: race.ground === "HEAVY" || race.ground === "VERY_HEAVY"
+      id: String(race.id || ""),
+      name: String(race.name || ""),
+      course: String(race.course || ""),
+      distance: Utils.toNumber(race.distance, 0),
+      date: race.date || "",
+      type: race.type || DataSource.detectRaceType(),
+      surface: race.surface || SURFACE.UNKNOWN,
+      going: race.going || GOING.UNKNOWN,
+      distanceType: this.distanceType(race.distance),
+      horses: horses
     };
   }
 
-  return {
-    horses: horses.map(h => ({
-      ...h
-    })),
+  /**
+   * 馬正規化
+   */
+  static normalizeHorse(raw) {
+    const h = raw || {};
 
-    distance: race.distance,
-    grade: race.grade,
-    ground: race.ground,
-    course: race.course,
+    return {
+      raceId: String(h.raceId || ""),
+      id: String(h.id || h.horseId || ""),
+      name: String(h.name || ""),
+      jockey: String(h.jockey || ""),
+      trainer: String(h.trainer || ""),
+      weight: Utils.toNumber(h.weight, 0),
+      odds: Utils.toNumber(h.odds, 0),
+      form: Utils.toNumber(h.form, 0),
+      gate: Utils.toNumber(h.gate, 0),
+      popularity: Utils.toNumber(h.popularity, 0),
 
-    isShort: race.distance <= 1400,
-    isMiddle: race.distance > 1400 && race.distance < 2200,
-    isLong: race.distance >= 2200,
+      baseSpeed: Utils.toNumber(h.baseSpeed, h.speed || 0),
+      stamina: Utils.toNumber(h.stamina, 0),
+      finishStrength: Utils.toNumber(h.finishStrength, h.finish || 0),
 
-    isHeavyGround: race.ground === "HEAVY" || race.ground === "VERY_HEAVY"
-  };
-}
-
+      last3Avg: Utils.toNumber(h.last3Avg, h.last3 || 0),
+      last5Avg: Utils.toNumber(h.last5Avg, h.last5 || 0),
+      trend: Utils.toNumber(h.trend, 0)
+    };
+  }
 
   /**
-   * FeatureEngine用入力セット生成
+   * FeatureEngine入力形式
    */
   static toFeatureInput(race) {
-    const context = this.extractContext(race);
+    const r = this.build(race);
 
     return {
-      race: race,
-      context: context,
-      horses: race.horses
+      race: r,
+      context: this.extractContext(r),
+      horses: Array.isArray(r.horses) ? r.horses : []
     };
   }
-
 
   /**
-   * デバッグ用サマリー
+   * レース文脈
    */
-  static summary(race) {
+  static extractContext(race) {
+    const distance = Utils.toNumber(race.distance, 0);
+
     return {
-      id: race.id,
-      name: race.name,
-      date: race.date,
-      fieldSize: race.horses.length,
-      distance: race.distance,
-      grade: race.grade
+      raceId: race.id,
+      type: race.type || RACE_TYPE.CENTRAL,
+      course: race.course || "",
+      surface: race.surface || SURFACE.UNKNOWN,
+      going: race.going || GOING.UNKNOWN,
+      distance: distance,
+      distanceType: this.distanceType(distance),
+      horseCount: Array.isArray(race.horses) ? race.horses.length : 0,
+
+      isShort: distance > 0 && distance <= 1400,
+      isMile: distance > 1400 && distance <= 1800,
+      isMiddle: distance > 1800 && distance < 2400,
+      isLong: distance >= 2400,
+
+      isCentral: race.type === RACE_TYPE.CENTRAL,
+      isLocal: race.type === RACE_TYPE.LOCAL
     };
   }
+
+  /**
+   * 距離分類
+   */
+  static distanceType(distance) {
+    const d = Utils.toNumber(distance, 0);
+
+    if (d <= 0) return DISTANCE_TYPE.UNKNOWN;
+    if (d <= 1400) return DISTANCE_TYPE.SPRINT;
+    if (d <= 1800) return DISTANCE_TYPE.MILE;
+    if (d < 2400) return DISTANCE_TYPE.MIDDLE;
+
+    return DISTANCE_TYPE.LONG;
+  }
+
+  /**
+   * 妥当性チェック
+   */
+  static isValid(race) {
+    if (!race) return false;
+    if (!race.id) return false;
+    if (!Array.isArray(race.horses)) return false;
+    if (race.horses.length === 0) return false;
+
+    return true;
+  }
+
 }

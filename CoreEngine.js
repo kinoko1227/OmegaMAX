@@ -1,106 +1,129 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * CoreEngine.js
+ * ----------------------------------------------------------
+ * 勝率・EV・Kelly・Confidence・Decision
+ * FeatureEngine出力 → 投資判断前評価
+ * ==========================================================
+ */
+
 class CoreEngine {
 
-  /**
-   * メイン評価
-   */
-  static evaluate(race, featureObj) {
-
-    const f = featureObj.features;
-
-    // ① 重み取得
+  static evaluate(race, featureSet) {
     const weights = LearningEngine.getWeights();
+    const features = featureSet.features || {};
+    const odds = Utils.toNumber(featureSet.odds, 0);
 
-    // ② 加重スコア計算
-    const rawScore = this._calcWeightedScore(f, weights);
-
-    // ③ 正規化（勝率変換）
-    const winProb = this._sigmoid(rawScore);
-
-    // ④ オッズ取得
-    const odds = f.odds || 2.0;
-
-    // ⑤ EV計算
-    const ev = (winProb * odds) - 1;
-
-    // ⑥ ケリー基準
-    const kelly = this._kelly(winProb, odds);
-
-    // ⑦ 信頼度
-    const confidence = this._confidence(winProb, f);
+    const score = this.calcScore(features, weights);
+    const winProb = this.calcWinProb(score);
+    const ev = this.calcEV(winProb, odds);
+    const kelly = this.calcKelly(winProb, odds);
+    const confidencePoint = this.confidencePoint(score, ev);
 
     return {
-      horseId: featureObj.horseId,
-      score: rawScore,
+      raceId: race.id,
+      horseId: featureSet.horseId,
+      horseName: featureSet.horseName || "",
+      score: score,
       winProb: winProb,
+      odds: odds,
       ev: ev,
       kelly: kelly,
-      confidence: confidence,
-      odds: odds
+      confidencePoint: confidencePoint,
+      confidence: this.confidenceRank(confidencePoint),
+      decision: this.decision(ev)
     };
   }
 
+  static calcScore(features, weights) {
+    const keys = Object.keys(features || {});
+    if (keys.length === 0) return 0;
 
-  //////////////////////////////
-  // 加重スコア
-  //////////////////////////////
-  static _calcWeightedScore(features, weights) {
+    let total = 0;
+    let weightTotal = 0;
 
-    let score = 0;
+    keys.forEach(key => {
+      const value = Utils.toNumber(features[key], 0);
+      const weight = Utils.toNumber(weights[key], 1);
 
-    Object.keys(features).forEach(k => {
-
-      const v = features[k];
-      const w = weights[k] || 1;
-
-      // 数値以外除外
-      if (typeof v === "number") {
-        score += v * w;
-      }
+      total += value * weight;
+      weightTotal += weight;
     });
 
-    return score;
+    if (weightTotal <= 0) return 0;
+
+    return Utils.round(total / weightTotal, 4);
   }
 
+  static calcWinProb(score) {
+    const x = Utils.toNumber(score, 0);
 
-  //////////////////////////////
-  // 勝率変換（シグモイド）
-  //////////////////////////////
-  static _sigmoid(x) {
+    // scoreは0〜1想定。0.5を中心にロジスティック変換
+    const adjusted = (x - 0.5) * 4;
+    const prob = 1 / (1 + Math.exp(-adjusted));
 
-    return 1 / (1 + Math.exp(-x));
+    return Utils.round(Utils.clamp01(prob), 4);
   }
 
+  static calcEV(winProb, odds) {
+    const p = Utils.toNumber(winProb, 0);
+    const o = Utils.toNumber(odds, 0);
 
-  //////////////////////////////
-  // ケリー基準
-  //////////////////////////////
-  static _kelly(prob, odds) {
+    if (p <= 0 || o <= 1) return 0;
 
-    const edge = (prob * odds) - 1;
-
-    const denom = odds - 1;
-
-    if (denom <= 0) return 0;
-
-    const k = edge / denom;
-
-    return Math.max(0, Math.min(k, 0.25)); // 安全制限
+    return Utils.round(p * o, 4);
   }
 
+  static calcKelly(winProb, odds) {
+    const p = Utils.toNumber(winProb, 0);
+    const o = Utils.toNumber(odds, 0);
 
-  //////////////////////////////
-  // 信頼度
-  //////////////////////////////
-  static _confidence(prob, features) {
+    if (p <= 0 || o <= 1) return 0;
 
-    // 極端値を下げる
-    const entropyPenalty = Math.abs(prob - 0.5);
+    const b = o - 1;
+    const q = 1 - p;
 
-    // データ密度（擬似）
-    const stability = features.last3Avg ? 1 : 0.7;
+    const raw = (b * p - q) / b;
+    const adjusted = raw * CONFIG.BANKROLL.KELLY_RATE;
 
-    return Math.max(0, Math.min(1,
-      (1 - entropyPenalty) * stability
-    ));
+    return Utils.round(
+      Math.max(0, Math.min(adjusted, CONFIG.BANKROLL.MAX_BET_RATE)),
+      4
+    );
+  }
+
+  static decision(ev) {
+    const e = Utils.toNumber(ev, 0);
+
+    if (e >= CONFIG.DECISION.BUY) return DECISION.BUY;
+    if (e >= CONFIG.DECISION.WATCH) return DECISION.WATCH;
+
+    return DECISION.PASS;
+  }
+
+  static confidencePoint(score, ev) {
+    const s = Utils.toNumber(score, 0);
+    const e = Utils.toNumber(ev, 0);
+
+    const scorePart = s * 70;
+    const evPart = Math.max(0, Math.min(30, (e - 1) * 30));
+
+    return Utils.round(
+      Math.max(0, Math.min(100, scorePart + evPart)),
+      2
+    );
+  }
+
+  static confidenceRank(point) {
+    const p = Utils.toNumber(point, 0);
+
+    if (p >= CONFIG.CONFIDENCE.S) return CONFIDENCE_RANK.S;
+    if (p >= CONFIG.CONFIDENCE.A) return CONFIDENCE_RANK.A;
+    if (p >= CONFIG.CONFIDENCE.B) return CONFIDENCE_RANK.B;
+    if (p >= CONFIG.CONFIDENCE.C) return CONFIDENCE_RANK.C;
+    if (p >= CONFIG.CONFIDENCE.D) return CONFIDENCE_RANK.D;
+
+    return CONFIDENCE_RANK.PASS;
   }
 }

@@ -1,211 +1,210 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * TicketEngine.js
+ * ----------------------------------------------------------
+ * 買い目生成・資金配分
+ * CoreEngine結果 → 投資候補
+ * ==========================================================
+ */
+
 class TicketEngine {
 
-  /**
-   * メイン処理
-   */
-  static build(race, coreResults, bankroll = 100000) {
+  static build(race, coreResults, bankroll) {
+    const safeBankroll = Utils.toNumber(
+      bankroll,
+      CONFIG.BANKROLL.INITIAL
+    );
 
-    // ① EVフィルタ
-    const filtered = this._filterEV(coreResults);
+    const candidates = (coreResults || [])
+      .filter(r => r.decision !== DECISION.PASS)
+      .sort((a, b) => b.ev - a.ev);
 
-    // ② ランク付け
-    const ranked = this._rank(filtered);
+    const tickets = [];
 
-    // ③ 資金配分
-    const allocated = this._allocateBankroll(ranked, bankroll);
-
-    // ④ 券種生成
-    const tickets = this._composeTickets(ranked, allocated);
-
-    // ⑤ リスク調整
-    const finalTickets = this._riskBalance(tickets);
+    tickets.push(...this._winTickets(candidates, safeBankroll));
+    tickets.push(...this._wideTickets(candidates, safeBankroll));
+    tickets.push(...this._quinellaTickets(candidates, safeBankroll));
+    tickets.push(...this._exactaTickets(candidates, safeBankroll));
+    tickets.push(...this._trioTickets(candidates, safeBankroll));
+    tickets.push(...this._trifectaTickets(candidates, safeBankroll));
 
     return {
       raceId: race.id,
-      tickets: finalTickets,
-
-      // 🔥 Backtest用（重要）
-      snapshot: this._buildSnapshot(race, ranked, allocated),
-
-      // 評価用メタ
-      expectedEV: this._portfolioEV(finalTickets),
-      riskScore: this._riskScore(finalTickets)
+      tickets: tickets
+        .filter(t => t.amount >= CONFIG.BANKROLL.MIN_BET)
+        .slice(0, CONFIG.TICKET && CONFIG.TICKET.MAX_PER_RACE ? CONFIG.TICKET.MAX_PER_RACE : 8)
     };
   }
 
-
-  //////////////////////////////
-  // ① EVフィルタ
-  //////////////////////////////
-  static _filterEV(results) {
-    return results.filter(r =>
-      r.ev > 0 &&
-      r.score > 0.55 &&
-      r.kelly > 0
-    );
+  static _winTickets(list, bankroll) {
+    return list
+      .filter(r => r.decision === DECISION.BUY)
+      .slice(0, 2)
+      .map(r => ({
+        type: TICKET_TYPE.WIN,
+        horseId: r.horseId,
+        horseName: r.horseName,
+        ev: r.ev,
+        confidence: r.confidence,
+        amount: this._betAmount(bankroll, r.kelly)
+      }));
   }
 
-
-  //////////////////////////////
-  // ② ランク付け
-  //////////////////////////////
-  static _rank(results) {
-    return results.sort((a, b) =>
-      (b.ev * 0.5 + b.score * 0.5) -
-      (a.ev * 0.5 + a.score * 0.5)
-    );
-  }
-
-
-  //////////////////////////////
-  // ③ 資金配分
-  //////////////////////////////
-  static _allocateBankroll(ranked, bankroll) {
-
-    return ranked.map(r => {
-
-      const safety = 0.25; // フラクショナルKelly
-
-      let bet = bankroll * (r.kelly || 0) * safety;
-
-      bet = Math.max(100, Math.min(bet, bankroll * 0.05));
-
-      return {
-        ...r,
-        bet: Math.floor(bet)
-      };
-    });
-  }
-
-
-  //////////////////////////////
-  // ④ 券種生成
-  //////////////////////////////
-  static _composeTickets(ranked, allocated) {
-
-    const top = ranked.slice(0, 3);
+  static _wideTickets(list, bankroll) {
+    const top = list.slice(0, 4);
     const tickets = [];
 
-    // 🥇 単勝
-    if (top[0]) {
-      tickets.push({
-        type: "WIN",
-        horse: top[0].horseId,
-        bet: allocated[0]?.bet || 0,
+    for (let i = 0; i < top.length; i++) {
+      for (let j = i + 1; j < top.length; j++) {
+        const ev = Utils.average([top[i].ev, top[j].ev]);
 
-        // 🔥 Backtest必須
-        odds: top[0].odds || 2.5,
-        ev: top[0].ev
-      });
-    }
+        if (ev < CONFIG.DECISION.WATCH) continue;
 
-    // 🥈 複勝
-    top.slice(0, 2).forEach((h, i) => {
-      tickets.push({
-        type: "PLACE",
-        horse: h.horseId,
-        bet: Math.floor((allocated[i]?.bet || 0) * 0.6),
-
-        odds: h.odds || 1.5,
-        ev: h.ev
-      });
-    });
-
-    // 🥉 馬連
-    if (top.length >= 2) {
-      tickets.push({
-        type: "QUINELLA",
-        combo: [top[0].horseId, top[1].horseId],
-        bet: Math.floor((allocated[0]?.bet || 0) * 0.5),
-
-        odds: 5.0,
-        ev: (top[0].ev + top[1].ev) / 2
-      });
-    }
-
-    // 🔥 三連複（高EVのみ）
-    if (top.length >= 3 && top[2].ev > 1.2) {
-      tickets.push({
-        type: "TRIO",
-        combo: [top[0].horseId, top[1].horseId, top[2].horseId],
-        bet: Math.floor((allocated[2]?.bet || 0) * 0.3),
-
-        odds: 10.0,
-        ev: top[2].ev
-      });
+        tickets.push({
+          type: TICKET_TYPE.WIDE,
+          horses: [top[i].horseId, top[j].horseId],
+          horseNames: [top[i].horseName, top[j].horseName],
+          ev: Utils.round(ev, 4),
+          confidence: this._pairConfidence(top[i], top[j]),
+          amount: this._fixedAmount(bankroll, 0.01)
+        });
+      }
     }
 
     return tickets;
   }
 
+  static _quinellaTickets(list, bankroll) {
+    const top = list.slice(0, 3);
+    const tickets = [];
 
-  //////////////////////////////
-  // ⑤ リスク制御
-  //////////////////////////////
-  static _riskBalance(tickets) {
+    for (let i = 0; i < top.length; i++) {
+      for (let j = i + 1; j < top.length; j++) {
+        const ev = Utils.average([top[i].ev, top[j].ev]);
 
-    return tickets
-      .map(t => {
+        if (ev < CONFIG.DECISION.BUY) continue;
 
-        if (t.bet > 20000) {
-          t.bet *= 0.7;
+        tickets.push({
+          type: TICKET_TYPE.QUINELLA,
+          horses: [top[i].horseId, top[j].horseId],
+          horseNames: [top[i].horseName, top[j].horseName],
+          ev: Utils.round(ev, 4),
+          confidence: this._pairConfidence(top[i], top[j]),
+          amount: this._fixedAmount(bankroll, 0.008)
+        });
+      }
+    }
+
+    return tickets;
+  }
+
+  static _exactaTickets(list, bankroll) {
+    const top = list.slice(0, 3);
+    const tickets = [];
+
+    for (let i = 0; i < top.length; i++) {
+      for (let j = 0; j < top.length; j++) {
+        if (i === j) continue;
+
+        const ev = top[i].ev * 0.65 + top[j].ev * 0.35;
+
+        if (ev < CONFIG.DECISION.BUY) continue;
+
+        tickets.push({
+          type: TICKET_TYPE.EXACTA,
+          horses: [top[i].horseId, top[j].horseId],
+          horseNames: [top[i].horseName, top[j].horseName],
+          ev: Utils.round(ev, 4),
+          confidence: this._pairConfidence(top[i], top[j]),
+          amount: this._fixedAmount(bankroll, 0.006)
+        });
+      }
+    }
+
+    return tickets;
+  }
+
+  static _trioTickets(list, bankroll) {
+    const top = list.slice(0, 5);
+    const tickets = [];
+
+    for (let i = 0; i < top.length; i++) {
+      for (let j = i + 1; j < top.length; j++) {
+        for (let k = j + 1; k < top.length; k++) {
+          const ev = Utils.average([top[i].ev, top[j].ev, top[k].ev]);
+
+          if (ev < CONFIG.DECISION.BUY) continue;
+
+          tickets.push({
+            type: TICKET_TYPE.TRIO,
+            horses: [top[i].horseId, top[j].horseId, top[k].horseId],
+            horseNames: [top[i].horseName, top[j].horseName, top[k].horseName],
+            ev: Utils.round(ev, 4),
+            confidence: this._multiConfidence([top[i], top[j], top[k]]),
+            amount: this._fixedAmount(bankroll, 0.005)
+          });
         }
+      }
+    }
 
-        if (t.bet < 100) {
-          t.bet = 0;
+    return tickets;
+  }
+
+  static _trifectaTickets(list, bankroll) {
+    const top = list.slice(0, 4);
+    const tickets = [];
+
+    for (let i = 0; i < top.length; i++) {
+      for (let j = 0; j < top.length; j++) {
+        for (let k = 0; k < top.length; k++) {
+          if (i === j || j === k || i === k) continue;
+
+          const ev = top[i].ev * 0.5 + top[j].ev * 0.3 + top[k].ev * 0.2;
+
+          if (ev < CONFIG.EV.TARGET) continue;
+
+          tickets.push({
+            type: TICKET_TYPE.TRIFECTA,
+            horses: [top[i].horseId, top[j].horseId, top[k].horseId],
+            horseNames: [top[i].horseName, top[j].horseName, top[k].horseName],
+            ev: Utils.round(ev, 4),
+            confidence: this._multiConfidence([top[i], top[j], top[k]]),
+            amount: this._fixedAmount(bankroll, 0.003)
+          });
         }
+      }
+    }
 
-        return t;
-      })
-      .filter(t => t.bet > 0);
+    return tickets;
   }
 
+  static _betAmount(bankroll, kelly) {
+    const amount = bankroll * Utils.toNumber(kelly, 0);
 
-  //////////////////////////////
-  // ⑥ ポートフォリオEV
-  //////////////////////////////
-  static _portfolioEV(tickets) {
-
-    return tickets.reduce((sum, t) => {
-      return sum + (t.ev || 0) * (t.bet / 1000);
-    }, 0);
+    return this._roundBet(
+      Math.min(amount, bankroll * CONFIG.BANKROLL.MAX_BET_RATE)
+    );
   }
 
-
-  //////////////////////////////
-  // ⑦ リスクスコア
-  //////////////////////////////
-  static _riskScore(tickets) {
-
-    let risk = 0;
-
-    tickets.forEach(t => {
-
-      if (t.bet > 10000) risk += 0.2;
-      if (t.type === "TRIO") risk += 0.3;
-      if (t.type === "QUINELLA") risk += 0.1;
-    });
-
-    return Math.min(risk, 1);
+  static _fixedAmount(bankroll, rate) {
+    return this._roundBet(bankroll * rate);
   }
 
+  static _roundBet(amount) {
+    const a = Math.max(CONFIG.BANKROLL.MIN_BET, amount);
+    return Math.floor(a / 100) * 100;
+  }
 
-  //////////////////////////////
-  // 🔥 Backtest用スナップショット
-  //////////////////////////////
-  static _buildSnapshot(race, ranked, allocated) {
+  static _pairConfidence(a, b) {
+    return this._multiConfidence([a, b]);
+  }
 
-    return {
-      raceId: race.id,
+  static _multiConfidence(list) {
+    const avg = Utils.average(
+      list.map(x => Utils.toNumber(x.confidencePoint, 0))
+    );
 
-      decisions: ranked.map((r, i) => ({
-        horseId: r.horseId,
-        ev: r.ev,
-        score: r.score,
-        bet: allocated[i]?.bet || 0
-      })),
-
-      timestamp: new Date().toISOString()
-    };
+    return CoreEngine.confidenceRank(avg);
   }
 }

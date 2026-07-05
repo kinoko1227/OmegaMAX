@@ -1,103 +1,76 @@
 class FeatureEngine {
 
   static build(race, horse) {
+    const r = Race.build(race);
+    const h = Race.normalizeHorse(horse);
 
-    const base = this._base(horse);
-    const fit = this._fit(horse, race);
-    const form = this._form(horse);
-    const flow = this._flow(race, horse);
-    const market = this._market(horse);
-    const ai = this._ai(horse);
+    const features = {};
 
-    const features = this._flatten({
-      base,
-      fit,
-      form,
-      flow,
-      market,
-      ai
+    FeatureRegistry.all().forEach(def => {
+      features[def.key] = this._calc(def, r, h);
     });
 
     return {
-      horseId: horse.id,
+      raceId: r.id,
+      horseId: h.id,
+      horseName: h.name,
+      odds: h.odds,
       features
     };
   }
 
+  static buildRace(race) {
+    const r = Race.build(race);
 
-  /**
-   * flatten（安全版）
-   */
-  static _flatten(obj) {
+    return r.horses.map(h => this.build(r, h));
+  }
 
-    const out = {};
+  static _calc(def, race, horse) {
+    try {
+      const raw = def.calculator(race, horse);
+      const value = Utils.toNumber(raw, CONFIG.FEATURE.DEFAULT_SCORE);
+      return this._normalize(value);
+    } catch (e) {
+      Logger.warn("Feature calc failed: " + def.key, e);
+      return CONFIG.FEATURE.DEFAULT_SCORE;
+    }
+  }
 
-    Object.values(obj).forEach(group => {
+  static _normalize(value) {
+    const n = Utils.toNumber(value, CONFIG.FEATURE.DEFAULT_SCORE);
 
-      if (!group) return;
+    if (n < 0) return 0;
+    if (n > 1 && n <= 100) return n / 100;
+    if (n > 100) return 1;
 
-      Object.keys(group).forEach(k => {
-        out[k] = this._safe(group[k]);
-      });
+    return n;
+  }
+
+  static keys() {
+    return FeatureRegistry.all().map(f => f.key);
+  }
+
+  static learningKeys() {
+    return FeatureRegistry
+      .all()
+      .filter(f => f.learning)
+      .map(f => f.key);
+  }
+
+  static calibrationKeys() {
+    return FeatureRegistry
+      .all()
+      .filter(f => f.calibration)
+      .map(f => f.key);
+  }
+
+  static defaultWeights() {
+    const weights = {};
+
+    FeatureRegistry.all().forEach(f => {
+      weights[f.key] = f.defaultWeight;
     });
 
-    return out;
-  }
-
-
-  /**
-   * 安全化（超重要）
-   */
-  static _safe(v) {
-    const n = Number(v);
-    return isNaN(n) ? 0 : n;
-  }
-
-
-  //////////////////////////////
-  // 以下は必須（最低限実装）
-  //////////////////////////////
-
-  static _base(h) {
-    return {
-      speed: h.baseSpeed || 0,
-      stamina: h.stamina || 0,
-      finish: h.finishStrength || 0
-    };
-  }
-
-  static _fit(h, r) {
-    return {
-      distance: 1, // 仮（後で実装）
-      course: 1
-    };
-  }
-
-  static _form(h) {
-    return {
-      last3: h.last3Avg || 0,
-      last5: h.last5Avg || 0,
-      trend: h.trend || 0
-    };
-  }
-
-  static _flow(r, h) {
-    return {
-      pace: 1,
-      advantage: 1
-    };
-  }
-
-  static _market(h) {
-    return {
-      odds: h.odds || 0,
-      bias: 1
-    };
-  }
-
-  static _ai(h) {
-    return {
-      confidence: 1
-    };
+    return weights;
   }
 }

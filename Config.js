@@ -1,19 +1,15 @@
 const CONFIG = Object.freeze({
+
   APP: {
     NAME: "ΩMAX Ultimate",
     VERSION: "10.0.0"
   },
 
   SHEETS: {
-    IMPORT: "IMPORT",
     RACES: "RACES",
     HORSES: "HORSES",
     ODDS: "ODDS",
     RESULTS: "RESULTS",
-    LEARNING: "LEARNING",
-    FEATURE_DB: "FEATURE_DB",
-    BACKTEST: "BACKTEST",
-    DASHBOARD: "DASHBOARD",
     LOG: "LOG"
   },
 
@@ -21,18 +17,12 @@ const CONFIG = Object.freeze({
     RACES_URL: "",
     HORSES_URL: "",
     ODDS_URL: "",
-    RESULTS_URL: ""
-  },
+    RESULTS_URL: "",
 
-  AUTO: {
-    ENABLE: true,
-    RUN_HOUR: 5,
-    LEARNING_HOUR: 19
-  },
-
-  RACING: {
-    CENTRAL_DAYS: [0, 6],
-    LOCAL_DAYS: [1, 2, 3, 4, 5]
+    RACES_FILE: "RACES.csv",
+    HORSES_FILE: "HORSES.csv",
+    ODDS_FILE: "ODDS.csv",
+    RESULTS_FILE: "RESULTS.csv"
   },
 
   BANKROLL: {
@@ -45,13 +35,12 @@ const CONFIG = Object.freeze({
   EV: {
     MIN: 1.05,
     TARGET: 1.15,
-    MAX: 3.0
+    MAX: 3.00
   },
 
   DECISION: {
     BUY: 1.15,
-    WATCH: 1.05,
-    PASS: 1.0
+    WATCH: 1.05
   },
 
   CONFIDENCE: {
@@ -63,29 +52,25 @@ const CONFIG = Object.freeze({
   },
 
   FEATURE: {
-    DEFAULT_SCORE: 0.5,
-    MAX_PAST_RUNS: 5
+    DEFAULT_SCORE: 0.50
   },
 
   LEARNING: {
     ENABLE: true,
-    MAX_HISTORY: 5000,
-    AUTO_SAVE: true
+    LEARNING_RATE: 0.01
   },
 
-  CALIBRATION: {
-    ENABLE: true,
-    YEARS: 3
+  TICKET: {
+    MAX_PER_RACE: 8
   },
 
   LOG: {
     ENABLE: true,
-    MAX_ROWS: 1000,
-    LEVEL: "INFO"
+    MAX_ROWS: 5000
   },
 
   DEBUG: {
-    ENABLE: true,
-    ENABLE_TIMER: true
+    ENABLE: true
   }
+
 });

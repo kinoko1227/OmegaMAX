@@ -1,59 +1,70 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * OmegaDataLayer.js
+ * ----------------------------------------------------------
+ * DataSource → Race変換
+ * AIへ渡すデータ生成
+ * ==========================================================
+ */
+
 class OmegaDataLayer {
 
-  static buildRaceContext() {
+  /**
+   * 今日の全レース取得
+   */
+  static getTodayRaces() {
 
-    const races = DataResilienceLayer.getRacesSafe();
+    const races = DataSource.getTodayRaces();
 
-    return races.map(race => {
+    return races
+      .map(r => Race.build(r))
+      .filter(Race.isValid);
 
-      const horses = DataResilienceLayer.getHorsesSafe(race.id);
-      const odds = DataResilienceLayer.getOddsSafe(race.id);
-
-      const enriched = horses.map(h => {
-
-        const clean = DataSanitizer.sanitizeHorse({
-          ...h,
-          odds: odds[h.id] || h.odds || 0
-        });
-
-        return this._format(clean, race);
-      });
-
-      return DataSanitizer.sanitizeRace({
-        ...race,
-        horses: enriched
-      });
-    });
   }
 
+  /**
+   * FeatureEngine入力生成
+   */
+  static getFeatureInputs() {
 
-  // ★ここが唯一の責任
-  static _format(horse, race) {
+    return this
+      .getTodayRaces()
+      .map(r => Race.toFeatureInput(r));
 
-    return {
-      id: horse.id,
-      name: horse.name,
-      jockey: horse.jockey,
-      trainer: horse.trainer,
-
-      weight: horse.weight,
-      odds: horse.odds,
-
-      baseSpeed: horse.baseSpeed,
-      stamina: horse.stamina,
-      finishStrength: horse.finishStrength,
-
-      last3Avg: horse.last3Avg,
-      last5Avg: horse.last5Avg,
-      trend: horse.trend,
-
-      raceDistance: race.distance,
-      raceCourse: race.course,
-
-      meta: {
-        source: "OmegaDataLayer",
-        version: "v9"
-      }
-    };
   }
+
+  /**
+   * RaceID検索
+   */
+  static getRace(raceId) {
+
+    return this
+      .getTodayRaces()
+      .find(r => r.id === String(raceId));
+
+  }
+
+  /**
+   * 馬一覧
+   */
+  static getHorses(raceId) {
+
+    const race = this.getRace(raceId);
+
+    return race
+      ? race.horses
+      : [];
+
+  }
+
+  /**
+   * 今日の件数
+   */
+  static countToday() {
+
+    return this.getTodayRaces().length;
+
+  }
+
 }

@@ -1,71 +1,105 @@
 /**
  * ==========================================================
- * ΩMAX LearningEngine（修正版）
+ * ΩMAX Ultimate v10
+ * LearningEngine.js
+ * ----------------------------------------------------------
+ * 日次学習
+ * 結果ログ → Feature Weight微調整
  * ==========================================================
  */
+
 class LearningEngine {
 
-  /**
-   * 重み取得（安全版）
-   */
   static getWeights() {
-
-    try {
-      const raw = PropertiesService.getScriptProperties()
-        .getProperty("Ω_WEIGHTS");
-
-      if (!raw) return {};
-
-      const parsed = JSON.parse(raw);
-
-      // 型安全化（壊れ防止）
-      if (typeof parsed !== "object" || Array.isArray(parsed)) {
-        return {};
-      }
-
-      return parsed;
-
-    } catch (e) {
-      Logger.error("LearningEngine getWeights error", e);
-      return {};
-    }
+    return OmegaState.getWeights();
   }
 
-  /**
-   * 学習更新（仮実装：Backtest結果から補正）
-   */
   static update(history) {
+    Logger.info("Learning START");
 
-    if (!history || history.length === 0) return {};
+    if (!CONFIG.LEARNING.ENABLE) {
+      Logger.info("Learning skipped: disabled");
+      return this.getWeights();
+    }
+
+    if (!Array.isArray(history) || history.length === 0) {
+      Logger.info("Learning skipped: empty history");
+      return this.getWeights();
+    }
 
     const weights = this.getWeights();
+    const updated = this._updateWeights(weights, history);
 
-    // 超シンプル更新ロジック（安定優先）
-    history.forEach(h => {
+    OmegaState.saveWeights(updated);
+    OmegaState.saveLastLearningAt(new Date());
 
-      if (!h.scoreSummary) return;
+    Logger.info("Learning DONE", {
+      history: history.length,
+      weights: Object.keys(updated).length
+    });
 
-      h.scoreSummary.forEach(s => {
+    return updated;
+  }
 
-        const k = s.horseId;
+  static _updateWeights(weights, history) {
+    const next = Object.assign({}, weights);
+    const keys = FeatureEngine.learningKeys();
 
-        if (!weights[k]) {
-          weights[k] = 1;
+    keys.forEach(key => {
+      const delta = this._calcDelta(key, history);
+      const current = Utils.toNumber(next[key], 1);
+      next[key] = this._clip(current + delta);
+    });
+
+    return next;
+  }
+
+  static _calcDelta(key, history) {
+    let hitSum = 0;
+    let missSum = 0;
+    let hitCount = 0;
+    let missCount = 0;
+
+    history.forEach(log => {
+      const results = log.scoreSummary || [];
+      const winner = log.winner || log.resultWinner || "";
+
+      results.forEach(r => {
+        const featureValue =
+          r.features && r.features[key] !== undefined
+            ? Utils.toNumber(r.features[key], 0)
+            : 0;
+
+        if (String(r.horseId) === String(winner)) {
+          hitSum += featureValue;
+          hitCount += 1;
+        } else {
+          missSum += featureValue;
+          missCount += 1;
         }
-
-        // EVベース微調整
-        const ev = s.ev || 0;
-
-        weights[k] += ev * 0.01;
-
-        // クリップ（暴走防止）
-        weights[k] = Math.max(0.5, Math.min(weights[k], 2.0));
       });
     });
 
-    PropertiesService.getScriptProperties()
-      .setProperty("Ω_WEIGHTS", JSON.stringify(weights));
+    if (hitCount === 0 || missCount === 0) return 0;
 
+    const hitAvg = hitSum / hitCount;
+    const missAvg = missSum / missCount;
+
+    return Utils.round((hitAvg - missAvg) * 0.01, 4);
+  }
+
+  static _clip(value) {
+    const v = Utils.toNumber(value, 1);
+    return Utils.round(
+      Math.max(0.5, Math.min(2.0, v)),
+      4
+    );
+  }
+
+  static reset() {
+    const weights = FeatureEngine.defaultWeights();
+    OmegaState.saveWeights(weights);
+    Logger.info("Learning weights reset");
     return weights;
   }
 }
