@@ -33,7 +33,8 @@ class TicketEngine {
       raceId: race.id,
       tickets: tickets
         .filter(t => t.amount >= CONFIG.BANKROLL.MIN_BET)
-        .slice(0, CONFIG.TICKET && CONFIG.TICKET.MAX_PER_RACE ? CONFIG.TICKET.MAX_PER_RACE : 8)
+        .sort((a, b) => b.ev - a.ev)
+        .slice(0, CONFIG.TICKET.MAX_PER_RACE)
     };
   }
 
@@ -47,56 +48,28 @@ class TicketEngine {
         horseName: r.horseName,
         ev: r.ev,
         confidence: r.confidence,
-        amount: this._betAmount(bankroll, r.kelly)
+        amount: this._confidenceBetAmount(bankroll, r)
       }));
   }
 
   static _wideTickets(list, bankroll) {
-    const top = list.slice(0, 4);
-    const tickets = [];
-
-    for (let i = 0; i < top.length; i++) {
-      for (let j = i + 1; j < top.length; j++) {
-        const ev = Utils.average([top[i].ev, top[j].ev]);
-
-        if (ev < CONFIG.DECISION.WATCH) continue;
-
-        tickets.push({
-          type: TICKET_TYPE.WIDE,
-          horses: [top[i].horseId, top[j].horseId],
-          horseNames: [top[i].horseName, top[j].horseName],
-          ev: Utils.round(ev, 4),
-          confidence: this._pairConfidence(top[i], top[j]),
-          amount: this._fixedAmount(bankroll, 0.01)
-        });
-      }
-    }
-
-    return tickets;
+    return this._pairTickets(
+      list.slice(0, 4),
+      bankroll,
+      TICKET_TYPE.WIDE,
+      CONFIG.DECISION.WATCH,
+      0.010
+    );
   }
 
   static _quinellaTickets(list, bankroll) {
-    const top = list.slice(0, 3);
-    const tickets = [];
-
-    for (let i = 0; i < top.length; i++) {
-      for (let j = i + 1; j < top.length; j++) {
-        const ev = Utils.average([top[i].ev, top[j].ev]);
-
-        if (ev < CONFIG.DECISION.BUY) continue;
-
-        tickets.push({
-          type: TICKET_TYPE.QUINELLA,
-          horses: [top[i].horseId, top[j].horseId],
-          horseNames: [top[i].horseName, top[j].horseName],
-          ev: Utils.round(ev, 4),
-          confidence: this._pairConfidence(top[i], top[j]),
-          amount: this._fixedAmount(bankroll, 0.008)
-        });
-      }
-    }
-
-    return tickets;
+    return this._pairTickets(
+      list.slice(0, 3),
+      bankroll,
+      TICKET_TYPE.QUINELLA,
+      CONFIG.DECISION.BUY,
+      0.008
+    );
   }
 
   static _exactaTickets(list, bankroll) {
@@ -116,8 +89,8 @@ class TicketEngine {
           horses: [top[i].horseId, top[j].horseId],
           horseNames: [top[i].horseName, top[j].horseName],
           ev: Utils.round(ev, 4),
-          confidence: this._pairConfidence(top[i], top[j]),
-          amount: this._fixedAmount(bankroll, 0.006)
+          confidence: this._multiConfidence([top[i], top[j]]),
+          amount: this._confidenceFixedAmount(bankroll, [top[i], top[j]], 0.006)
         });
       }
     }
@@ -132,17 +105,18 @@ class TicketEngine {
     for (let i = 0; i < top.length; i++) {
       for (let j = i + 1; j < top.length; j++) {
         for (let k = j + 1; k < top.length; k++) {
-          const ev = Utils.average([top[i].ev, top[j].ev, top[k].ev]);
+          const trio = [top[i], top[j], top[k]];
+          const ev = Utils.average(trio.map(x => x.ev));
 
           if (ev < CONFIG.DECISION.BUY) continue;
 
           tickets.push({
             type: TICKET_TYPE.TRIO,
-            horses: [top[i].horseId, top[j].horseId, top[k].horseId],
-            horseNames: [top[i].horseName, top[j].horseName, top[k].horseName],
+            horses: trio.map(x => x.horseId),
+            horseNames: trio.map(x => x.horseName),
             ev: Utils.round(ev, 4),
-            confidence: this._multiConfidence([top[i], top[j], top[k]]),
-            amount: this._fixedAmount(bankroll, 0.005)
+            confidence: this._multiConfidence(trio),
+            amount: this._confidenceFixedAmount(bankroll, trio, 0.005)
           });
         }
       }
@@ -160,17 +134,18 @@ class TicketEngine {
         for (let k = 0; k < top.length; k++) {
           if (i === j || j === k || i === k) continue;
 
+          const trio = [top[i], top[j], top[k]];
           const ev = top[i].ev * 0.5 + top[j].ev * 0.3 + top[k].ev * 0.2;
 
           if (ev < CONFIG.EV.TARGET) continue;
 
           tickets.push({
             type: TICKET_TYPE.TRIFECTA,
-            horses: [top[i].horseId, top[j].horseId, top[k].horseId],
-            horseNames: [top[i].horseName, top[j].horseName, top[k].horseName],
+            horses: trio.map(x => x.horseId),
+            horseNames: trio.map(x => x.horseName),
             ev: Utils.round(ev, 4),
-            confidence: this._multiConfidence([top[i], top[j], top[k]]),
-            amount: this._fixedAmount(bankroll, 0.003)
+            confidence: this._multiConfidence(trio),
+            amount: this._confidenceFixedAmount(bankroll, trio, 0.003)
           });
         }
       }
@@ -179,25 +154,60 @@ class TicketEngine {
     return tickets;
   }
 
-  static _betAmount(bankroll, kelly) {
-    const amount = bankroll * Utils.toNumber(kelly, 0);
+  static _pairTickets(list, bankroll, type, minEv, rate) {
+    const tickets = [];
+
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const pair = [list[i], list[j]];
+        const ev = Utils.average(pair.map(x => x.ev));
+
+        if (ev < minEv) continue;
+
+        tickets.push({
+          type: type,
+          horses: pair.map(x => x.horseId),
+          horseNames: pair.map(x => x.horseName),
+          ev: Utils.round(ev, 4),
+          confidence: this._multiConfidence(pair),
+          amount: this._confidenceFixedAmount(bankroll, pair, rate)
+        });
+      }
+    }
+
+    return tickets;
+  }
+
+  static _confidenceBetAmount(bankroll, result) {
+    const base = bankroll * Utils.toNumber(result.kelly, 0);
+    const adjusted = base * this._confidenceMultiplier(result.confidence);
 
     return this._roundBet(
-      Math.min(amount, bankroll * CONFIG.BANKROLL.MAX_BET_RATE)
+      Math.min(adjusted, bankroll * CONFIG.BANKROLL.MAX_BET_RATE)
     );
   }
 
-  static _fixedAmount(bankroll, rate) {
-    return this._roundBet(bankroll * rate);
+  static _confidenceFixedAmount(bankroll, list, rate) {
+    const confidence = this._multiConfidence(list);
+    const base = bankroll * rate;
+    const adjusted = base * this._confidenceMultiplier(confidence);
+
+    return this._roundBet(adjusted);
+  }
+
+  static _confidenceMultiplier(confidence) {
+    if (confidence === CONFIDENCE_RANK.S) return 1.20;
+    if (confidence === CONFIDENCE_RANK.A) return 1.00;
+    if (confidence === CONFIDENCE_RANK.B) return 0.80;
+    if (confidence === CONFIDENCE_RANK.C) return 0.60;
+    if (confidence === CONFIDENCE_RANK.D) return 0.40;
+
+    return 0;
   }
 
   static _roundBet(amount) {
     const a = Math.max(CONFIG.BANKROLL.MIN_BET, amount);
     return Math.floor(a / 100) * 100;
-  }
-
-  static _pairConfidence(a, b) {
-    return this._multiConfidence([a, b]);
   }
 
   static _multiConfidence(list) {

@@ -1,3 +1,13 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * FeatureEngine.js
+ * ----------------------------------------------------------
+ * 特徴量生成
+ * Race / Horse → FeatureSet
+ * ==========================================================
+ */
+
 class FeatureEngine {
 
   static build(race, horse) {
@@ -7,7 +17,7 @@ class FeatureEngine {
     const features = {};
 
     FeatureRegistry.all().forEach(def => {
-      features[def.key] = this._calc(def, r, h);
+      features[def.key] = this._value(h[def.key]);
     });
 
     return {
@@ -22,55 +32,45 @@ class FeatureEngine {
   static buildRace(race) {
     const r = Race.build(race);
 
-    return r.horses.map(h => this.build(r, h));
+    return r.horses.map(horse =>
+      this.build(r, horse)
+    );
   }
 
-  static _calc(def, race, horse) {
-    try {
-      const raw = def.calculator(race, horse);
-      const value = Utils.toNumber(raw, CONFIG.FEATURE.DEFAULT_SCORE);
-      return this._normalize(value);
-    } catch (e) {
-      Logger.warn("Feature calc failed: " + def.key, e);
-      return CONFIG.FEATURE.DEFAULT_SCORE;
-    }
+  static _value(value) {
+    const n = Utils.toNumber(
+      value,
+      CONFIG.FEATURE.DEFAULT_SCORE
+    );
+
+    return this._normalize(n);
   }
 
   static _normalize(value) {
-    const n = Utils.toNumber(value, CONFIG.FEATURE.DEFAULT_SCORE);
+    if (value < 0) return 0;
 
-    if (n < 0) return 0;
-    if (n > 1 && n <= 100) return n / 100;
-    if (n > 100) return 1;
+    if (value > 1 && value <= 100) {
+      return Utils.round(value / 100, 4);
+    }
 
-    return n;
+    if (value > 100) return 1;
+
+    return Utils.round(value, 4);
   }
 
   static keys() {
-    return FeatureRegistry.all().map(f => f.key);
+    return FeatureRegistry.keys();
   }
 
   static learningKeys() {
-    return FeatureRegistry
-      .all()
-      .filter(f => f.learning)
-      .map(f => f.key);
+    return FeatureRegistry.learningKeys();
   }
 
   static calibrationKeys() {
-    return FeatureRegistry
-      .all()
-      .filter(f => f.calibration)
-      .map(f => f.key);
+    return FeatureRegistry.calibrationKeys();
   }
 
   static defaultWeights() {
-    const weights = {};
-
-    FeatureRegistry.all().forEach(f => {
-      weights[f.key] = f.defaultWeight;
-    });
-
-    return weights;
+    return FeatureRegistry.defaultWeights();
   }
 }

@@ -27,18 +27,18 @@ class LearningEngine {
       return this.getWeights();
     }
 
-    const weights = this.getWeights();
-    const updated = this._updateWeights(weights, history);
+    const currentWeights = this.getWeights();
+    const nextWeights = this._updateWeights(currentWeights, history);
 
-    OmegaState.saveWeights(updated);
+    OmegaState.saveWeights(nextWeights);
     OmegaState.saveLastLearningAt(new Date());
 
     Logger.info("Learning DONE", {
       history: history.length,
-      weights: Object.keys(updated).length
+      weights: Object.keys(nextWeights).length
     });
 
-    return updated;
+    return nextWeights;
   }
 
   static _updateWeights(weights, history) {
@@ -55,43 +55,48 @@ class LearningEngine {
   }
 
   static _calcDelta(key, history) {
-    let hitSum = 0;
-    let missSum = 0;
-    let hitCount = 0;
-    let missCount = 0;
+    let winnerSum = 0;
+    let loserSum = 0;
+    let winnerCount = 0;
+    let loserCount = 0;
 
     history.forEach(log => {
-      const results = log.scoreSummary || [];
-      const winner = log.winner || log.resultWinner || "";
+      const winner =
+        log.winner ||
+        log.resultWinner ||
+        (log.result && log.result.winner) ||
+        "";
 
-      results.forEach(r => {
-        const featureValue =
-          r.features && r.features[key] !== undefined
-            ? Utils.toNumber(r.features[key], 0)
-            : 0;
+      const rows = log.scoreSummary || [];
 
-        if (String(r.horseId) === String(winner)) {
-          hitSum += featureValue;
-          hitCount += 1;
+      rows.forEach(row => {
+        const features = row.features || {};
+        const value = Utils.toNumber(features[key], 0);
+
+        if (String(row.horseId) === String(winner)) {
+          winnerSum += value;
+          winnerCount += 1;
         } else {
-          missSum += featureValue;
-          missCount += 1;
+          loserSum += value;
+          loserCount += 1;
         }
       });
     });
 
-    if (hitCount === 0 || missCount === 0) return 0;
+    if (winnerCount === 0 || loserCount === 0) return 0;
 
-    const hitAvg = hitSum / hitCount;
-    const missAvg = missSum / missCount;
+    const winnerAvg = winnerSum / winnerCount;
+    const loserAvg = loserSum / loserCount;
 
-    return Utils.round((hitAvg - missAvg) * 0.01, 4);
+    const diff = winnerAvg - loserAvg;
+    const rate = Utils.toNumber(CONFIG.LEARNING.LEARNING_RATE, 0.01);
+
+    return Utils.round(diff * rate, 4);
   }
 
   static _clip(value) {
-    const v = Utils.toNumber(value, 1);
     return Utils.round(
-      Math.max(0.5, Math.min(2.0, v)),
+      Math.max(0.5, Math.min(2.0, Utils.toNumber(value, 1))),
       4
     );
   }

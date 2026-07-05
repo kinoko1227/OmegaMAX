@@ -1,138 +1,193 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * BacktestEngine.js
+ * ----------------------------------------------------------
+ * 的中判定・資金推移・回収率計算
+ * TicketEngine結果 → 検証結果
+ * ==========================================================
+ */
+
 class BacktestEngine {
 
-  /**
-   * メイン：完全一致バックテスト
-   */
-  static run(races, initialBankroll = 100000) {
+  static run(races, bankroll = CONFIG.BANKROLL.INITIAL) {
+    const safeRaces = Array.isArray(races) ? races : [];
+    const results = DataSource.getResults();
 
-    let bankroll = initialBankroll;
+    let currentBankroll = Utils.toNumber(bankroll, CONFIG.BANKROLL.INITIAL);
+    let maxBankroll = currentBankroll;
+    let maxDrawdown = 0;
 
-    const logs = [];
+    const history = [];
 
-    races.forEach(race => {
+    safeRaces.forEach(race => {
+      const result = results[race.id];
 
-      // ① Feature生成（実運用と同じ）
-      const featureInputs = Race.toFeatureInput(race);
-      const featureSet = Main._buildFeatures(featureInputs);
+      if (!result) {
+        history.push({
+          raceId: race.id,
+          skipped: true,
+          reason: "NO_RESULT",
+          bankroll: currentBankroll
+        });
+        return;
+      }
 
-      // ② Core評価（実運用と同じ）
+      const featureSet = FeatureEngine.buildRace(race);
+
       const coreResults = featureSet.map(f =>
         CoreEngine.evaluate(race, f)
       );
 
-      // ③ Ticket生成（ここが最重要）
       const ticketResult = TicketEngine.build(
         race,
         coreResults,
-        bankroll
+        currentBankroll
       );
 
-      // ④ 実際のレース結果取得
-      const result = this._getRaceResult(race);
+      const settled = this.settleTickets(
+        ticketResult.tickets,
+        result
+      );
 
-      // ⑤ 損益計算（完全一致ルール）
-      const pnl = this._calcPnL(ticketResult, result);
+      currentBankroll += settled.profit;
 
-      bankroll += pnl;
+      maxBankroll = Math.max(maxBankroll, currentBankroll);
 
-      logs.push({
+      const drawdown =
+        maxBankroll > 0
+          ? (maxBankroll - currentBankroll) / maxBankroll
+          : 0;
+
+      maxDrawdown = Math.max(maxDrawdown, drawdown);
+
+      history.push({
         raceId: race.id,
-        pnl,
-        bankroll,
-        tickets: ticketResult.tickets
+        result: result,
+        coreResults: coreResults,
+        tickets: ticketResult.tickets,
+        settled: settled,
+        bankroll: currentBankroll
+      });
+    });
+
+    const totalBet = Utils.sum(
+      history.map(h => h.settled ? h.settled.totalBet : 0)
+    );
+
+    const totalReturn = Utils.sum(
+      history.map(h => h.settled ? h.settled.totalReturn : 0)
+    );
+
+    return {
+      initialBankroll: bankroll,
+      finalBankroll: currentBankroll,
+      profit: currentBankroll - bankroll,
+      returnRate: totalBet > 0 ? Utils.round(totalReturn / totalBet, 4) : 1,
+      totalBet: totalBet,
+      totalReturn: totalReturn,
+      maxDrawdown: Utils.round(maxDrawdown, 4),
+      races: safeRaces.length,
+      history: history
+    };
+  }
+
+  static settleTickets(tickets, result) {
+    const safeTickets = Array.isArray(tickets) ? tickets : [];
+
+    let totalBet = 0;
+    let totalReturn = 0;
+    const details = [];
+
+    safeTickets.forEach(ticket => {
+      const amount = Utils.toNumber(ticket.amount, 0);
+      totalBet += amount;
+
+      const hit = this.isHit(ticket, result);
+      const payoutRate = hit ? this.estimatePayoutRate(ticket) : 0;
+      const returned = hit ? amount * payoutRate : 0;
+
+      totalReturn += returned;
+
+      details.push({
+        ticket: ticket,
+        hit: hit,
+        amount: amount,
+        payoutRate: payoutRate,
+        returnAmount: returned,
+        profit: returned - amount
       });
     });
 
     return {
-      finalBankroll: bankroll,
-      logs,
-      maxDrawdown: this._calcDrawdown(logs)
+      totalBet: totalBet,
+      totalReturn: totalReturn,
+      profit: totalReturn - totalBet,
+      hitCount: details.filter(d => d.hit).length,
+      details: details
     };
   }
 
+  static isHit(ticket, result) {
+    if (!ticket || !result) return false;
 
-  //////////////////////////////
-  // 実結果取得（DataSource依存）
-  //////////////////////////////
-  static _getRaceResult(race) {
+    const winner = String(result.winner || "");
+    const places = Array.isArray(result.place)
+      ? result.place.map(x => String(x))
+      : [];
 
-    return DataSource.getResult(race.id) || {
-      winners: [],
-      payouts: {}
-    };
-  }
-
-
-  //////////////////////////////
-  // 損益計算（完全一致ルール）
-  //////////////////////////////
-  static _calcPnL(ticketResult, result) {
-
-    let pnl = 0;
-
-    ticketResult.tickets.forEach(t => {
-
-      const payout = result.payouts?.[t.type] || 0;
-
-      if (this._isWin(t, result)) {
-        pnl += t.bet * payout;
-      } else {
-        pnl -= t.bet;
-      }
-    });
-
-    return pnl;
-  }
-
-
-  //////////////////////////////
-  // 的中判定
-  //////////////////////////////
-  static _isWin(ticket, result) {
-
-    const winners = result.winners || [];
-
-    if (ticket.type === "WIN") {
-      return winners[0] === ticket.horse;
+    if (ticket.type === TICKET_TYPE.WIN) {
+      return String(ticket.horseId) === winner;
     }
 
-    if (ticket.type === "PLACE") {
-      return winners.slice(0, 3).includes(ticket.horse);
+    const horses = Array.isArray(ticket.horses)
+      ? ticket.horses.map(x => String(x))
+      : [];
+
+    if (ticket.type === TICKET_TYPE.WIDE) {
+      return horses.every(h => places.indexOf(h) >= 0);
     }
 
-    if (ticket.type === "QUINELLA") {
-      return ticket.combo.every(h =>
-        winners.slice(0, 2).includes(h)
-      );
+    if (ticket.type === TICKET_TYPE.QUINELLA) {
+      return horses.length === 2 &&
+        horses.indexOf(winner) >= 0 &&
+        places.indexOf(horses[0]) >= 0 &&
+        places.indexOf(horses[1]) >= 0;
     }
 
-    if (ticket.type === "TRIO") {
-      return ticket.combo.every(h =>
-        winners.slice(0, 3).includes(h)
-      );
+    if (ticket.type === TICKET_TYPE.EXACTA) {
+      return horses.length >= 2 &&
+        horses[0] === winner &&
+        places.length >= 2 &&
+        horses[1] === places[1];
+    }
+
+    if (ticket.type === TICKET_TYPE.TRIO) {
+      return horses.length === 3 &&
+        horses.every(h => places.indexOf(h) >= 0);
+    }
+
+    if (ticket.type === TICKET_TYPE.TRIFECTA) {
+      return horses.length === 3 &&
+        places.length >= 3 &&
+        horses[0] === places[0] &&
+        horses[1] === places[1] &&
+        horses[2] === places[2];
     }
 
     return false;
   }
 
+  static estimatePayoutRate(ticket) {
+    if (!ticket) return 0;
 
-  //////////////////////////////
-  // ドローダウン
-  //////////////////////////////
-  static _calcDrawdown(logs) {
+    if (ticket.type === TICKET_TYPE.WIN) return Math.max(1.1, Utils.toNumber(ticket.ev, 1));
+    if (ticket.type === TICKET_TYPE.WIDE) return 2.0;
+    if (ticket.type === TICKET_TYPE.QUINELLA) return 5.0;
+    if (ticket.type === TICKET_TYPE.EXACTA) return 10.0;
+    if (ticket.type === TICKET_TYPE.TRIO) return 15.0;
+    if (ticket.type === TICKET_TYPE.TRIFECTA) return 50.0;
 
-    let peak = 100000;
-    let maxDD = 0;
-
-    logs.forEach(l => {
-
-      if (l.bankroll > peak) peak = l.bankroll;
-
-      const dd = (peak - l.bankroll) / peak;
-
-      if (dd > maxDD) maxDD = dd;
-    });
-
-    return maxDD;
+    return 0;
   }
 }

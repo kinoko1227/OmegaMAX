@@ -4,7 +4,6 @@
  * CoreEngine.js
  * ----------------------------------------------------------
  * 勝率・EV・Kelly・Confidence・Decision
- * FeatureEngine出力 → 投資判断前評価
  * ==========================================================
  */
 
@@ -25,11 +24,15 @@ class CoreEngine {
       raceId: race.id,
       horseId: featureSet.horseId,
       horseName: featureSet.horseName || "",
+      odds: odds,
+
+      features: features,
+
       score: score,
       winProb: winProb,
-      odds: odds,
       ev: ev,
       kelly: kelly,
+
       confidencePoint: confidencePoint,
       confidence: this.confidenceRank(confidencePoint),
       decision: this.decision(ev)
@@ -59,7 +62,6 @@ class CoreEngine {
   static calcWinProb(score) {
     const x = Utils.toNumber(score, 0);
 
-    // scoreは0〜1想定。0.5を中心にロジスティック変換
     const adjusted = (x - 0.5) * 4;
     const prob = 1 / (1 + Math.exp(-adjusted));
 
