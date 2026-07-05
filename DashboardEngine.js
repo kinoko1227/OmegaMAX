@@ -1,132 +1,184 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * DashboardEngine.js
+ * ----------------------------------------------------------
+ * ダッシュボード更新
+ * ==========================================================
+ */
+
 class DashboardEngine {
 
-  /**
-   * メインレポート生成
-   */
+  static update(data) {
+
+    if (!CONFIG.DASHBOARD.ENABLE) {
+      Logger.info("Dashboard skipped: disabled");
+      return false;
+    }
+
+    const sheet = this._sheet();
+
+    sheet.clearContents();
+
+    this._writeSummary(sheet, data);
+    this._writeRaceResults(sheet, data);
+    this._writeTickets(sheet, data);
+
+    Logger.info("Dashboard updated");
+
+    return true;
+  }
+
+  static _writeSummary(sheet, data) {
+
+    const metrics = data.metrics || {};
+    const races = data.races || [];
+    const raceResults = data.raceResults || [];
+
+    const buyCount = this._countTickets(raceResults);
+
+    sheet.getRange(1, 1, 1, 2).setValues([
+      ["ΩMAX Dashboard", CONFIG.APP.VERSION]
+    ]);
+
+    sheet.getRange(3, 1, 8, 2).setValues([
+      ["更新日時", this._now()],
+      ["レース数", races.length],
+      ["最終資金", data.bankroll || CONFIG.BANKROLL.INITIAL],
+      ["ROI", metrics.roi || ""],
+      ["利益", metrics.profit || ""],
+      ["最大DD", metrics.maxDrawdown || ""],
+      ["的中率", metrics.hitRate || ""],
+      ["買い目数", buyCount]
+    ]);
+  }
+
+  static _writeRaceResults(sheet, data) {
+
+    const raceResults = data.raceResults || [];
+
+    const startRow = 13;
+
+    sheet.getRange(startRow, 1, 1, 7).setValues([
+      [
+        "Race ID",
+        "Race Name",
+        "頭数",
+        "最高EV",
+        "最高Confidence",
+        "Decision",
+        "買い目数"
+      ]
+    ]);
+
+    if (raceResults.length === 0) return;
+
+    const rows = raceResults.map(r => {
+
+      const race = r.race || {};
+      const core = r.coreResults || [];
+      const ticket = r.ticket || {};
+      const tickets = ticket.tickets || [];
+
+      const best = core.length > 0
+        ? core.slice().sort((a, b) => b.ev - a.ev)[0]
+        : null;
+
+      return [
+        race.id || "",
+        race.name || "",
+        race.horses ? race.horses.length : 0,
+        best ? best.ev : "",
+        best ? best.confidence : "",
+        best ? best.decision : "",
+        tickets.length
+      ];
+    });
+
+    sheet
+      .getRange(startRow + 1, 1, rows.length, 7)
+      .setValues(rows);
+  }
+
+  static _writeTickets(sheet, data) {
+
+    const raceResults = data.raceResults || [];
+
+    const startRow = 13 + raceResults.length + 4;
+
+    sheet.getRange(startRow, 1, 1, 8).setValues([
+      [
+        "Race ID",
+        "券種",
+        "馬ID",
+        "馬名",
+        "EV",
+        "Confidence",
+        "金額",
+        "組み合わせ"
+      ]
+    ]);
+
+    const rows = [];
+
+    raceResults.forEach(r => {
+
+      const raceId = r.race ? r.race.id : "";
+      const ticketResult = r.ticket || {};
+      const tickets = ticketResult.tickets || [];
+
+      tickets.forEach(t => {
+        rows.push([
+          raceId,
+          t.type || "",
+          t.horseId || "",
+          t.horseName || "",
+          t.ev || "",
+          t.confidence || "",
+          t.amount || "",
+          t.horses ? t.horses.join("-") : ""
+        ]);
+      });
+    });
+
+    if (rows.length === 0) return;
+
+    sheet
+      .getRange(startRow + 1, 1, rows.length, 8)
+      .setValues(rows);
+  }
+
   static generate() {
-
-    const history = OmegaState.loadHistory() || [];
-    const bankroll = OmegaState.loadBankroll() || 100000;
-    const weights = OmegaState.getWeights?.() || {};
-
     return {
-      bankroll: this._bankroll(bankroll, history),
-      performance: this._performance(history),
-      evGap: this._evGap(history),
-      learning: this._learningState(weights),
-      summary: this._summary(history)
+      logs: OmegaState.getLogs(),
+      stats: OmegaState.getStatistics(),
+      lastResult: OmegaState.getLastResult()
     };
   }
 
+  static _countTickets(raceResults) {
 
-  //////////////////////////////
-  // ① 資金推移
-  //////////////////////////////
-  static _bankroll(current, history) {
-
-    const curve = [];
-
-    let base = 100000;
-
-    history.forEach(h => {
-      base += h.pnl || 0;
-      curve.push(base);
-    });
-
-    return {
-      current: current,
-      curve: curve,
-      profit: current - 100000,
-      roi: (current - 100000) / 100000
-    };
+    return (raceResults || []).reduce((sum, r) => {
+      const ticket = r.ticket || {};
+      const tickets = ticket.tickets || [];
+      return sum + tickets.length;
+    }, 0);
   }
 
+  static _sheet() {
 
-  //////////////////////////////
-  // ② パフォーマンス
-  //////////////////////////////
-  static _performance(history) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    let wins = 0;
-    let total = history.length;
-    let profit = 0;
-
-    history.forEach(h => {
-      if (h.pnl > 0) wins++;
-      profit += h.pnl;
-    });
-
-    return {
-      winRate: total ? wins / total : 0,
-      avgProfit: total ? profit / total : 0,
-      totalProfit: profit,
-      trades: total
-    };
+    return ss.getSheetByName(CONFIG.SHEETS.DASHBOARD)
+      || ss.insertSheet(CONFIG.SHEETS.DASHBOARD);
   }
 
+  static _now() {
 
-  //////////////////////////////
-  // ③ EV vs 実収益ギャップ
-  //////////////////////////////
-  static _evGap(history) {
-
-    let evSum = 0;
-    let pnlSum = 0;
-
-    history.forEach(h => {
-      evSum += h.ev || 0;
-      pnlSum += h.pnl || 0;
-    });
-
-    return {
-      ev: evSum,
-      pnl: pnlSum,
-      gap: pnlSum - evSum,
-      ratio: evSum ? pnlSum / evSum : 0
-    };
-  }
-
-
-  //////////////////////////////
-  // ④ 学習状態
-  //////////////////////////////
-  static _learningState(weights) {
-
-    const keys = Object.keys(weights);
-
-    const avg =
-      keys.reduce((a, k) => a + weights[k], 0) / (keys.length || 1);
-
-    return {
-      weightCount: keys.length,
-      averageWeight: avg,
-      dispersion: this._variance(weights)
-    };
-  }
-
-
-  //////////////////////////////
-  // ⑤ 分散
-  //////////////////////////////
-  static _variance(weights) {
-
-    const vals = Object.values(weights);
-
-    const mean = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
-
-    return vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (vals.length || 1);
-  }
-
-
-  //////////////////////////////
-  // ⑥ サマリー
-  //////////////////////////////
-  static _summary(history) {
-
-    return {
-      status: history.length > 0 ? "ACTIVE" : "IDLE",
-      stability: history.length > 50 ? "STABLE" : "WARMUP",
-      maturity: history.length / 500
-    };
+    return Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone(),
+      DATE_FORMAT.DATETIME
+    );
   }
 }

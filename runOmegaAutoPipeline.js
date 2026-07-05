@@ -1,27 +1,53 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * runOmegaAutoPipeline.js
+ * ----------------------------------------------------------
+ * 自動実行エントリーポイント
+ * ==========================================================
+ */
+
 function runOmegaAutoPipeline() {
+
+  const start = new Date();
+
+  Logger.info("========================================");
+  Logger.info("ΩMAX Auto Pipeline START");
 
   try {
 
-    Logger.log("PIPELINE START");
+    //---------------------------------------
+    // 実行
+    //---------------------------------------
 
-    // ① CSV取得
-    const racesCsv = CsvFetcher.fetch(CONFIG.CSV.RACES_URL);
-    const horsesCsv = CsvFetcher.fetch(CONFIG.CSV.HORSES_URL);
+    const result = OmegaPipeline.run();
 
-    // ② Sheets反映
-    DataImporter.importRaces(racesCsv);
-    DataImporter.importHorses(horsesCsv);
+    //---------------------------------------
+    // 実行時間
+    //---------------------------------------
 
-    // ③ ΩMAX実行
-    const races = DataSource.getTodayRaces();
-    const result = Main.run(races);
+    const elapsed =
+      ((new Date()) - start) / 1000;
 
-    // ④ 学習更新
-    LearningEngine.update(result.logs);
+    Logger.info("ΩMAX Auto Pipeline SUCCESS");
+    Logger.info("Elapsed : " + elapsed + " sec");
 
-    Logger.log("PIPELINE DONE");
+    return result;
 
   } catch (e) {
-    Logger.error("PIPELINE ERROR", e);
+
+    Logger.error(
+      "ΩMAX Auto Pipeline ERROR",
+      e
+    );
+
+    throw e;
+
+  } finally {
+
+    Logger.info("ΩMAX Auto Pipeline END");
+    Logger.info("========================================");
+
   }
+
 }

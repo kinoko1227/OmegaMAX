@@ -1,28 +1,46 @@
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * runOmegaDailyProduction.js
+ * ----------------------------------------------------------
+ * 本番運用エントリーポイント
+ * 毎朝トリガー実行用
+ * ==========================================================
+ */
+
 function runOmegaDailyProduction() {
 
-  Logger.log("ΩMAX DAILY START");
+  const start = new Date();
 
-  const bankroll = OmegaState.loadBankroll() || 100000;
+  Logger.info("========================================");
+  Logger.info("ΩMAX Daily Production START");
 
-  // ① 当日レース取得（Sheets前提）
-  const races = DataSource.getTodayRaces();
+  try {
 
-  if (!races || races.length === 0) {
-    Logger.log("NO RACES");
-    return;
+    const result = OmegaPipeline.run();
+
+    const elapsed =
+      ((new Date()) - start) / 1000;
+
+    Logger.info("ΩMAX Daily Production SUCCESS");
+    Logger.info("Elapsed : " + elapsed + " sec");
+
+    return result;
+
+  } catch (e) {
+
+    Logger.error(
+      "ΩMAX Daily Production ERROR",
+      e
+    );
+
+    throw e;
+
+  } finally {
+
+    Logger.info("ΩMAX Daily Production END");
+    Logger.info("========================================");
+
   }
 
-  // ② 予想実行
-  const result = Main.run(races, bankroll);
-
-  // ③ 結果ロード
-  const results = ResultLoader.getResults();
-
-  // ④ 学習更新
-  const weights = LearningEngine.update(result.logs);
-
-  // ⑤ 保存
-  OmegaState.save(result);
-
-  Logger.log("ΩMAX DAILY END");
 }

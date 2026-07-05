@@ -9,136 +9,94 @@
 
 class Utils {
 
-  /**
-   * null・undefinedチェック
-   */
   static isEmpty(value) {
-
-    return (
-      value === null ||
+    return value === null ||
       value === undefined ||
-      value === ""
-    );
-
+      value === "";
   }
 
-  /**
-   * 数値変換
-   */
   static toNumber(value, defaultValue = 0) {
-
     const n = Number(value);
-
-    return isNaN(n)
-      ? defaultValue
-      : n;
-
+    return isNaN(n) ? defaultValue : n;
   }
 
-  /**
-   * 小数丸め
-   */
-  static round(value, digit = 2) {
-
-    const p = Math.pow(10, digit);
-
-    return Math.round(value * p) / p;
-
+  static round(value, digits = 2) {
+    const n = this.toNumber(value, 0);
+    const p = Math.pow(10, digits);
+    return Math.round(n * p) / p;
   }
 
-  /**
-   * 0～1へ制限
-   */
+  static clamp(value, min, max) {
+    const n = this.toNumber(value, min);
+    return Math.max(min, Math.min(max, n));
+  }
+
   static clamp01(value) {
-
-    return Math.max(
-      0,
-      Math.min(1, value)
-    );
-
+    return this.clamp(value, 0, 1);
   }
 
-  /**
-   * 配列平均
-   */
-  static average(list) {
+  static sum(list) {
+    if (!Array.isArray(list)) return 0;
 
-    if (!list || list.length === 0) {
+    return list.reduce((total, v) => {
+      return total + this.toNumber(v, 0);
+    }, 0);
+  }
+
+  static average(list) {
+    if (!Array.isArray(list) || list.length === 0) {
       return 0;
     }
 
-    const sum = list.reduce(
-      (a, b) => a + Number(b || 0),
-      0
-    );
-
-    return sum / list.length;
-
+    return this.sum(list) / list.length;
   }
 
-  /**
-   * 合計
-   */
-  static sum(list) {
-
-    if (!list) return 0;
-
-    return list.reduce(
-      (a, b) => a + Number(b || 0),
-      0
-    );
-
-  }
-
-  /**
-   * 最大
-   */
   static max(list) {
+    if (!Array.isArray(list) || list.length === 0) {
+      return 0;
+    }
 
-    return Math.max(...list);
-
+    return Math.max.apply(null, list.map(v => this.toNumber(v, 0)));
   }
 
-  /**
-   * 最小
-   */
   static min(list) {
+    if (!Array.isArray(list) || list.length === 0) {
+      return 0;
+    }
 
-    return Math.min(...list);
-
+    return Math.min.apply(null, list.map(v => this.toNumber(v, 0)));
   }
 
-  /**
-   * ディープコピー
-   */
   static clone(obj) {
-
-    return JSON.parse(
-      JSON.stringify(obj)
-    );
-
+    if (obj === null || obj === undefined) return obj;
+    return JSON.parse(JSON.stringify(obj));
   }
 
-  /**
-   * 今日文字列
-   */
-  static today() {
+  static now() {
+    return Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone(),
+      DATE_FORMAT.DATETIME
+    );
+  }
 
+  static today() {
     return Utilities.formatDate(
       new Date(),
       Session.getScriptTimeZone(),
       DATE_FORMAT.DATE
     );
-
   }
 
-  /**
-   * UUID生成
-   */
+  static dateId(date = new Date()) {
+    return Utilities.formatDate(
+      date,
+      Session.getScriptTimeZone(),
+      DATE_FORMAT.DATE_ID
+    );
+  }
+
   static uuid() {
-
     return Utilities.getUuid();
-
   }
-
 }

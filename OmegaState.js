@@ -3,7 +3,8 @@
  * ΩMAX Ultimate v10
  * OmegaState.js
  * ----------------------------------------------------------
- * 状態管理：資金・ログ・重み・補正・統計
+ * システム状態管理
+ * PropertiesService 永続化対応
  * ==========================================================
  */
 
@@ -16,7 +17,7 @@ class OmegaState {
   static get(key, defaultValue = null) {
     const raw = this.props().getProperty(key);
 
-    if (raw === null || raw === undefined) {
+    if (raw === null || raw === undefined || raw === "") {
       return defaultValue;
     }
 
@@ -28,124 +29,160 @@ class OmegaState {
   }
 
   static set(key, value) {
-    const v =
+    const stored =
       typeof value === "object" && value !== null
         ? JSON.stringify(value)
         : String(value);
 
-    this.props().setProperty(key, v);
+    this.props().setProperty(key, stored);
+
+    return true;
   }
 
-  // -----------------------------
-  // Bankroll
-  // -----------------------------
-
-  static getBankroll() {
-    return Number(
-      this.get("OMEGA_BANKROLL", CONFIG.BANKROLL.INITIAL)
-    ) || CONFIG.BANKROLL.INITIAL;
+  static remove(key) {
+    this.props().deleteProperty(key);
   }
-
-  static setBankroll(value) {
-    this.set("OMEGA_BANKROLL", Number(value) || CONFIG.BANKROLL.INITIAL);
-  }
-
-  // 旧コード互換
-  static loadBankroll() {
-    return this.getBankroll();
-  }
-
-  // -----------------------------
-  // Logs
-  // -----------------------------
-
-  static getLogs() {
-    return this.get("OMEGA_LOGS", []);
-  }
-
-  static saveLogs(logs) {
-    this.set("OMEGA_LOGS", Array.isArray(logs) ? logs : []);
-  }
-
-  static loadLogs() {
-    return this.getLogs();
-  }
-
-  // -----------------------------
-  // Weights
-  // -----------------------------
 
   static getWeights() {
-    return this.get("OMEGA_WEIGHTS", DEFAULT_WEIGHT || {});
+    return this.get(
+      "OMEGA_WEIGHTS",
+      FeatureEngine.defaultWeights()
+    );
   }
 
   static saveWeights(weights) {
-    this.set("OMEGA_WEIGHTS", weights || {});
+    return this.set(
+      "OMEGA_WEIGHTS",
+      weights || FeatureEngine.defaultWeights()
+    );
   }
 
-  // -----------------------------
-  // Calibration
-  // -----------------------------
+  static saveCalibration(calibration) {
+    return this.set(
+      "OMEGA_CALIBRATION",
+      calibration || {}
+    );
+  }
 
   static getCalibration() {
-    return this.get("OMEGA_CALIBRATION", {});
+    return this.get(
+      "OMEGA_CALIBRATION",
+      {}
+    );
   }
 
-  static saveCalibration(data) {
-    this.set("OMEGA_CALIBRATION", data || {});
+  static saveStatistics(statistics) {
+    return this.set(
+      "OMEGA_STATISTICS",
+      statistics || {}
+    );
   }
-
-  // -----------------------------
-  // Statistics
-  // -----------------------------
 
   static getStatistics() {
-    return this.get("OMEGA_STATS", {});
+    return this.get(
+      "OMEGA_STATISTICS",
+      {}
+    );
   }
 
-  static saveStatistics(stats) {
-    this.set("OMEGA_STATS", stats || {});
-  }
-
-  // -----------------------------
-  // Learning timestamp
-  // -----------------------------
-
-  static getLastLearningAt() {
-    return this.get("OMEGA_LAST_LEARNING_AT", null);
-  }
-
-  static saveLastLearningAt(date = new Date()) {
-    this.set("OMEGA_LAST_LEARNING_AT", date.toISOString());
-  }
-
-  // -----------------------------
-  // Result save helper
-  // -----------------------------
-
-  static save(result) {
-    if (!result) return;
-
-    if (result.finalBankroll !== undefined) {
-      this.setBankroll(result.finalBankroll);
-    }
-
-    if (result.logs) {
-      this.saveLogs(result.logs);
-    }
-
-    this.set("OMEGA_LAST_RESULT", result);
+  static saveLastResult(result) {
+    return this.set(
+      "OMEGA_LAST_RESULT",
+      result || {}
+    );
   }
 
   static getLastResult() {
-    return this.get("OMEGA_LAST_RESULT", null);
+    return this.get(
+      "OMEGA_LAST_RESULT",
+      null
+    );
   }
 
-  // -----------------------------
-  // Reset
-  // -----------------------------
+  static saveLastLearningAt(date = new Date()) {
+    const value =
+      date instanceof Date
+        ? date.toISOString()
+        : String(date);
+
+    return this.set(
+      "OMEGA_LAST_LEARNING_AT",
+      value
+    );
+  }
+
+  static getLastLearningAt() {
+    return this.get(
+      "OMEGA_LAST_LEARNING_AT",
+      null
+    );
+  }
+
+  static addLog(level, message) {
+    const logs = this.getLogs();
+
+    logs.push({
+      datetime: Utils.now(),
+      level,
+      message
+    });
+
+    while (logs.length > CONFIG.LOG.MAX_ROWS) {
+      logs.shift();
+    }
+
+    return this.set(
+      "OMEGA_LOGS",
+      logs
+    );
+  }
+
+  static getLogs() {
+    return this.get(
+      "OMEGA_LOGS",
+      []
+    );
+  }
+
+  static clearLogs() {
+    return this.set(
+      "OMEGA_LOGS",
+      []
+    );
+  }
+
+  static getBankroll() {
+    return Utils.toNumber(
+      this.get("OMEGA_BANKROLL", CONFIG.BANKROLL.INITIAL),
+      CONFIG.BANKROLL.INITIAL
+    );
+  }
+
+  static setBankroll(value) {
+    return this.set(
+      "OMEGA_BANKROLL",
+      Utils.toNumber(value, CONFIG.BANKROLL.INITIAL)
+    );
+  }
 
   static reset() {
-    this.props().deleteAllProperties();
+    const keys = [
+      "OMEGA_WEIGHTS",
+      "OMEGA_CALIBRATION",
+      "OMEGA_STATISTICS",
+      "OMEGA_LAST_RESULT",
+      "OMEGA_LAST_LEARNING_AT",
+      "OMEGA_LOGS",
+      "OMEGA_BANKROLL"
+    ];
+
+    keys.forEach(key => this.remove(key));
+
+    this.saveWeights(FeatureEngine.defaultWeights());
+    this.setBankroll(CONFIG.BANKROLL.INITIAL);
+
+    Logger.info("OmegaState Reset");
+
+    return true;
   }
 }

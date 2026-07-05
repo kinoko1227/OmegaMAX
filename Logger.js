@@ -4,6 +4,7 @@
  * Logger.js
  * ----------------------------------------------------------
  * 共通ログ管理
+ * GAS標準LoggerではなくΩMAX専用Logger
  * ==========================================================
  */
 
@@ -22,7 +23,7 @@ const Logger = (() => {
   };
 
   const error = (message, errorObj = null) => {
-    let body = message;
+    let body = String(message);
 
     if (errorObj) {
       if (errorObj.stack) {
@@ -45,19 +46,17 @@ const Logger = (() => {
 
     try {
       const result = fn();
-      const end = new Date().getTime();
+      const elapsed = new Date().getTime() - start;
 
-      info(label + " completed", {
-        elapsedMs: end - start
-      });
+      info(label + " DONE", { elapsedMs: elapsed });
 
       return result;
 
     } catch (e) {
-      const end = new Date().getTime();
+      const elapsed = new Date().getTime() - start;
 
-      error(label + " failed", {
-        elapsedMs: end - start,
+      error(label + " ERROR", {
+        elapsedMs: elapsed,
         error: e.toString(),
         stack: e.stack || ""
       });
@@ -69,10 +68,7 @@ const Logger = (() => {
   const write = (level, message, data = null) => {
     if (!CONFIG.LOG.ENABLE) return;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetName = CONFIG.SHEETS.LOG;
-    const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
-
+    const sheet = getLogSheet();
     ensureHeader(sheet);
 
     let body = String(message);
@@ -86,27 +82,37 @@ const Logger = (() => {
     }
 
     sheet.appendRow([
-      Utilities.formatDate(
-        new Date(),
-        Session.getScriptTimeZone(),
-        DATE_FORMAT.DATETIME
-      ),
+      Utils.now(),
       level,
       body
     ]);
 
+    try {
+      OmegaState.addLog(level, body);
+    } catch (e) {
+      // State保存失敗で本処理を止めない
+    }
+
     trim(sheet);
+  };
+
+  const getLogSheet = () => {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    return ss.getSheetByName(CONFIG.SHEETS.LOG)
+      || ss.insertSheet(CONFIG.SHEETS.LOG);
   };
 
   const ensureHeader = (sheet) => {
     if (sheet.getLastRow() > 0) return;
 
-    sheet.getRange(1, 1, 1, SHEET_HEADERS.LOG.length)
+    sheet
+      .getRange(1, 1, 1, SHEET_HEADERS.LOG.length)
       .setValues([SHEET_HEADERS.LOG]);
   };
 
   const trim = (sheet) => {
-    const max = CONFIG.LOG.MAX_ROWS || 1000;
+    const max = CONFIG.LOG.MAX_ROWS || 5000;
     const lastRow = sheet.getLastRow();
 
     if (lastRow <= max + 1) return;

@@ -3,8 +3,8 @@
  * ΩMAX Ultimate v10
  * OmegaDataLayer.js
  * ----------------------------------------------------------
- * DataSource → Race変換
- * AIへ渡すデータ生成
+ * データアクセス層
+ * DataSourceとAI層の橋渡し
  * ==========================================================
  */
 
@@ -13,40 +13,51 @@ class OmegaDataLayer {
   /**
    * 今日の全レース取得
    */
-  static getTodayRaces() {
+  static loadToday() {
 
     const races = DataSource.getTodayRaces();
 
-    return races
-      .map(r => Race.build(r))
-      .filter(Race.isValid);
+    return (races || [])
+      .map(race => {
+
+        const horses = DataSource.getHorses(race.id);
+
+        return Race.build({
+          ...race,
+          horses
+        });
+
+      })
+      .filter(race => Race.isValid(race));
 
   }
 
   /**
-   * FeatureEngine入力生成
+   * FeatureEngine入力用
    */
   static getFeatureInputs() {
 
-    return this
-      .getTodayRaces()
-      .map(r => Race.toFeatureInput(r));
+    return this.loadToday().map(race => ({
+      race,
+      context: Race.extractContext(race),
+      horses: race.horses
+    }));
 
   }
 
   /**
-   * RaceID検索
+   * レース取得
    */
   static getRace(raceId) {
 
-    return this
-      .getTodayRaces()
-      .find(r => r.id === String(raceId));
+    return this.loadToday().find(
+      race => String(race.id) === String(raceId)
+    ) || null;
 
   }
 
   /**
-   * 馬一覧
+   * 馬一覧取得
    */
   static getHorses(raceId) {
 
@@ -59,11 +70,58 @@ class OmegaDataLayer {
   }
 
   /**
-   * 今日の件数
+   * オッズ取得
+   */
+  static getOdds(raceId) {
+
+    return DataSource.getOdds(raceId);
+
+  }
+
+  /**
+   * 結果取得
+   */
+  static getResult(raceId) {
+
+    const results = DataSource.getResults();
+
+    return results[raceId] || null;
+
+  }
+
+  /**
+   * 全結果取得
+   */
+  static getResults() {
+
+    return DataSource.getResults();
+
+  }
+
+  /**
+   * 今日のレース数
    */
   static countToday() {
 
-    return this.getTodayRaces().length;
+    return this.loadToday().length;
+
+  }
+
+  /**
+   * データ確認
+   */
+  static healthCheck() {
+
+    const races = this.loadToday();
+
+    return {
+      raceCount: races.length,
+      horseCount: races.reduce(
+        (sum, race) => sum + race.horses.length,
+        0
+      ),
+      timestamp: new Date().toISOString()
+    };
 
   }
 

@@ -1,135 +1,106 @@
-class Main {
+/**
+ * ==========================================================
+ * ΩMAX Ultimate v10
+ * Main.js
+ * ----------------------------------------------------------
+ * システムエントリーポイント
+ * ==========================================================
+ */
 
-  static run(races, bankroll = null) {
-    Logger.log("ΩMAX v10 START");
+/**
+ * 通常実行
+ */
+function runOmegaDaily() {
+  return OmegaPipeline.run();
+}
 
-    const safeRaces = Array.isArray(races) ? races : [];
+/**
+ * 本番実行
+ */
+function runProduction() {
+  return runOmegaDailyProduction();
+}
 
-    Logger.log("RACES: " + safeRaces.length);
+/**
+ * 自動実行
+ */
+function runAuto() {
+  return runOmegaAutoPipeline();
+}
 
-    if (safeRaces.length === 0) {
-      return {
-        finalBankroll: OmegaState.getBankroll(),
-        returnRate: 1,
-        races: 0,
-        logs: []
-      };
-    }
+/**
+ * 学習のみ実行
+ */
+function runLearning() {
 
-    let currentBankroll =
-      bankroll !== null
-        ? Number(bankroll)
-        : OmegaState.getBankroll();
+  Logger.info("Learning START");
 
-    const logs = [];
+  const races = OmegaDataLayer.loadToday();
 
-    safeRaces.forEach((race, index) => {
-      try {
-        Logger.log("Processing Race " + (index + 1) + ": " + race.id);
+  const history = ResultLoader.buildHistory(races);
 
-        const normalizedRace = Race.build(race);
-        const featureInput = Race.toFeatureInput(normalizedRace);
+  const result = LearningEngine.update(history);
 
-        const featureSet = this._buildFeatures(featureInput);
+  Logger.info("Learning END");
 
-        const coreResults = featureSet.map(f =>
-          CoreEngine.evaluate(normalizedRace, f)
-        );
+  return result;
+}
 
-        const ticketResult = TicketEngine.build(
-          normalizedRace,
-          coreResults,
-          currentBankroll
-        );
+/**
+ * バックテストのみ
+ */
+function runBacktest() {
 
-        const backtest = BacktestEngine.run(
-          [normalizedRace],
-          currentBankroll
-        );
+  Logger.info("Backtest START");
 
-        currentBankroll =
-          backtest && backtest.finalBankroll
-            ? backtest.finalBankroll
-            : currentBankroll;
+  const races = OmegaDataLayer.loadToday();
 
-        logs.push(
-          this._log(
-            normalizedRace,
-            coreResults,
-            ticketResult,
-            backtest
-          )
-        );
+  const result = BacktestEngine.run(
+    races,
+    CONFIG.BANKROLL.INITIAL
+  );
 
-      } catch (e) {
-        Logger.error("Race processing error: " + race.id, e);
-      }
-    });
+  Logger.info("Backtest END");
 
-    const summary = this._summary(logs, currentBankroll);
+  return result;
+}
 
-    OmegaState.setBankroll(currentBankroll);
-    OmegaState.saveLogs(logs);
+/**
+ * Dashboard更新のみ
+ */
+function runDashboard() {
 
-    Logger.log("ΩMAX v10 END");
+  Logger.info("Dashboard START");
 
-    return summary;
-  }
+  const races = OmegaDataLayer.loadToday();
 
-  static runToday() {
-    const races = DataSource.getTodayRaces();
-    return this.run(races);
-  }
+  const result = BacktestEngine.run(
+    races,
+    CONFIG.BANKROLL.INITIAL
+  );
 
-  static _buildFeatures(input) {
-    if (!input) return [];
+  const metrics = MetricsEngine.save(result);
 
-    const race = input.race || input;
-    const horses = Array.isArray(input.horses) ? input.horses : [];
+  DashboardEngine.update({
+    races,
+    raceResults: [],
+    metrics,
+    bankroll: result.finalBankroll
+  });
 
-    const weights = LearningEngine.getWeights
-      ? LearningEngine.getWeights()
-      : OmegaState.getWeights();
+  Logger.info("Dashboard END");
 
-    return horses.map(horse => {
-      const base = FeatureEngine.build(race, horse);
-      const features = base.features || {};
+  return true;
+}
 
-      Object.keys(features).forEach(k => {
-        features[k] *= weights[k] || 1;
-      });
+/**
+ * システム確認
+ */
+function healthCheck() {
 
-      base.features = features;
-      return base;
-    });
-  }
+  const health = OmegaDataLayer.healthCheck();
 
-  static _log(race, core, ticket, backtest) {
-    return {
-      raceId: race.id,
-      raceName: race.name || "",
-      type: race.type || "",
-      scoreSummary: (core || []).map(c => ({
-        horseId: c.horseId,
-        score: c.score,
-        winProb: c.winProb,
-        ev: c.ev,
-        kelly: c.kelly
-      })),
-      tickets: ticket && ticket.tickets ? ticket.tickets : [],
-      bankroll: backtest && backtest.finalBankroll ? backtest.finalBankroll : 0,
-      drawdown: backtest && backtest.maxDrawdown ? backtest.maxDrawdown : 0
-    };
-  }
+  Logger.info("Health Check", health);
 
-  static _summary(logs, finalBankroll) {
-    const initial = CONFIG.BANKROLL.INITIAL;
-
-    return {
-      finalBankroll: finalBankroll,
-      returnRate: finalBankroll / initial,
-      races: logs.length,
-      logs: logs
-    };
-  }
+  return health;
 }
