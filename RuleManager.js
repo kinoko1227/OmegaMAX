@@ -11,7 +11,9 @@
 
 class RuleManager {
 
-  static KEY = "OMEGA_RULES";
+  static get KEY() {
+    return "OMEGA_RULES";
+  }
 
   /**
    * 全ルール取得
