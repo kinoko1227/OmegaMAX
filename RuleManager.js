@@ -18,7 +18,7 @@ class RuleManager {
   }
 
   static get CURRENT_VERSION() {
-    return 2;
+    return 3;
   }
 
   static all() {
@@ -91,39 +91,7 @@ class RuleManager {
       return false;
     }
 
-    const rules = this.all();
-
-    rules.forEach(function(rule) {
-      if (rule.id === "HORSE_FATIGUE_TRANSPORT_RISK") {
-        rule.id = "HORSE_FATIGUE_ENVIRONMENT";
-        rule.name = "疲労 × 環境変化";
-        rule.description =
-          "疲労が残り、環境適応も低いため能力発揮率を下げる。";
-        rule.conditions = [
-          {
-            key: "fatigue.score",
-            operator: "<=",
-            value: 75
-          },
-          {
-            key: "environment.score",
-            operator: "<=",
-            value: 60
-          }
-        ];
-        rule.effects = {
-          performanceRate: -0.05,
-          risk: 0.10,
-          volatility: 0.05
-        };
-        rule.touch();
-      }
-    });
-
-    this.saveAll(rules);
-    this.seedDefaultRules(false);
-
-    OmegaState.set(this.VERSION_KEY, this.CURRENT_VERSION);
+    this.resetRules();
 
     return true;
   }
@@ -145,8 +113,11 @@ class RuleManager {
       if (forceUpdate) {
         const existing = rules[index];
 
-        defaultRule.confidence = existing.confidence || defaultRule.confidence;
-        defaultRule.sample = existing.sample || defaultRule.sample;
+        defaultRule.confidence =
+          existing.confidence || defaultRule.confidence;
+
+        defaultRule.sample =
+          existing.sample || defaultRule.sample;
 
         rules[index] = defaultRule;
       }
@@ -230,7 +201,7 @@ class RuleManager {
         confidence: 50,
         sample: 0,
         description:
-          "調教状態と馬体重状態がともに良好。"
+          "調教状態と馬体重状態がともに良好な場合、能力発揮率を上げる。"
       }),
 
       new RuleModel({
@@ -258,58 +229,7 @@ class RuleManager {
         confidence: 50,
         sample: 0,
         description:
-          "成長途中で能力発揮が安定しない。"
-      }),
-
-      new RuleModel({
-        id: "HORSE_FATIGUE_ENVIRONMENT",
-        name: "疲労 × 環境変化",
-        category: "RISK",
-        domain: "HORSE",
-        status: "ACTIVE",
-        conditions: [
-          {
-            key: "fatigue.score",
-            operator: "<=",
-            value: 75
-          },
-          {
-            key: "environment.score",
-            operator: "<=",
-            value: 60
-          }
-        ],
-        effects: {
-          performanceRate: -0.05,
-          risk: 0.10,
-          volatility: 0.05
-        },
-        confidence: 50,
-        sample: 0,
-        description:
-          "疲労が残り、環境適応も低いため能力発揮率を下げる。"
-      }),
-
-      new RuleModel({
-        id: "HORSE_HIGH_ADAPTABILITY",
-        name: "高い環境適応力",
-        category: "ENVIRONMENT",
-        domain: "HORSE",
-        status: "ACTIVE",
-        conditions: [
-          {
-            key: "environment.score",
-            operator: ">=",
-            value: 75
-          }
-        ],
-        effects: {
-          performanceRate: 0.03
-        },
-        confidence: 50,
-        sample: 0,
-        description:
-          "環境変化への適応力が高い。"
+          "成長力は高いが成熟度が低い馬は、能力を安定して発揮できない可能性がある。"
       })
 
     ];
