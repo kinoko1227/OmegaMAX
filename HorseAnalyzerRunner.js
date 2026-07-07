@@ -5,17 +5,13 @@
  * ----------------------------------------------------------
  * Horse Analyzer群を一括実行し、
  * HorseBrainへ渡す入力を生成する。
+ *
+ * EnvironmentAnalyzerは現段階では主評価から外す。
  * ==========================================================
  */
 
 class HorseAnalyzerRunner {
 
-  /**
-   * @param {Object} horse
-   * @param {HorseProfile} profile
-   * @param {RaceContext} context
-   * @returns {Object}
-   */
   static run(horse, profile, context) {
 
     const analyzers = {
@@ -52,12 +48,6 @@ class HorseAnalyzerRunner {
       ),
 
       recovery: RecoveryAnalyzer.analyze(
-        horse,
-        profile,
-        context
-      ),
-
-      environment: EnvironmentAnalyzer.analyze(
         horse,
         profile,
         context
