@@ -20,7 +20,7 @@
  * ==========================================================
  */
 
-class LearningEngine {
+class KnowledgeLearningEngine {
 
   constructor(params) {
     params = params || {};
